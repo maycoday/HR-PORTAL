@@ -264,8 +264,13 @@ app.get('*', (req, res) => {
 });
 
 // Start Server
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`=================================================`);
   console.log(`HR Summit 2026 Portal Running on http://localhost:${PORT}`);
   console.log(`=================================================`);
+  try {
+    await db.initDb();
+  } catch (err) {
+    console.error('Database initialization warning:', err.message);
+  }
 });

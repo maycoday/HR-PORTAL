@@ -43,3 +43,41 @@ CREATE INDEX IF NOT EXISTS idx_hr_guests_company_trgm ON hr_guests USING gin (co
 CREATE INDEX IF NOT EXISTS idx_hr_guests_email ON hr_guests(email);
 CREATE INDEX IF NOT EXISTS idx_hr_guests_mobile ON hr_guests(mobile_number);
 CREATE INDEX IF NOT EXISTS idx_check_ins_hr_guest_id ON check_ins(hr_guest_id);
+
+-- =========================================================
+-- Row Level Security (RLS) Policies (RLS Remains ENABLED)
+-- =========================================================
+
+ALTER TABLE hr_guests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE check_ins ENABLE ROW LEVEL SECURITY;
+
+-- Grant permissions to anon, authenticated, and service_role
+GRANT ALL ON TABLE hr_guests TO anon, authenticated, service_role;
+GRANT ALL ON TABLE check_ins TO anon, authenticated, service_role;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
+
+-- Policies for hr_guests
+DROP POLICY IF EXISTS "Allow anon read hr_guests" ON hr_guests;
+CREATE POLICY "Allow anon read hr_guests" ON hr_guests FOR SELECT TO anon, authenticated USING (true);
+
+DROP POLICY IF EXISTS "Allow anon insert hr_guests" ON hr_guests;
+CREATE POLICY "Allow anon insert hr_guests" ON hr_guests FOR INSERT TO anon, authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anon update hr_guests" ON hr_guests;
+CREATE POLICY "Allow anon update hr_guests" ON hr_guests FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anon delete hr_guests" ON hr_guests;
+CREATE POLICY "Allow anon delete hr_guests" ON hr_guests FOR DELETE TO anon, authenticated USING (true);
+
+-- Policies for check_ins
+DROP POLICY IF EXISTS "Allow anon read check_ins" ON check_ins;
+CREATE POLICY "Allow anon read check_ins" ON check_ins FOR SELECT TO anon, authenticated USING (true);
+
+DROP POLICY IF EXISTS "Allow anon insert check_ins" ON check_ins;
+CREATE POLICY "Allow anon insert check_ins" ON check_ins FOR INSERT TO anon, authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anon update check_ins" ON check_ins;
+CREATE POLICY "Allow anon update check_ins" ON check_ins FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anon delete check_ins" ON check_ins;
+CREATE POLICY "Allow anon delete check_ins" ON check_ins FOR DELETE TO anon, authenticated USING (true);

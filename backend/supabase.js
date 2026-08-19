@@ -2,35 +2,73 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://fpvblgjwztbzreprqemq.supabase.co';
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
+
+function getSupabaseKey() {
+  return (
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_ANON_KEY ||
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwdmJsZ2p3enRienJlcHJxZW1xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5MzI4NjgsImV4cCI6MjEwMjUwODg2OH0.ye75RUMGSGoHUzeTu8Kton3pu1fFc-ZiWbEEroQFivc'
+  );
+}
 
 function getHeaders() {
+  const key = getSupabaseKey();
   return {
-    'apikey': SUPABASE_ANON_KEY,
-    'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+    'apikey': key,
+    'Authorization': `Bearer ${key}`,
     'Content-Type': 'application/json',
     'Prefer': 'return=representation'
   };
 }
 
-// 1. Fetch all HR Guests
+// 1. Fetch all HR Guests from Supabase
 async function fetchGuests() {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+  const key = getSupabaseKey();
+  if (!SUPABASE_URL || !key) return null;
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/hr_guests?select=*&order=id.desc`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/hr_guests?select=*&order=id.asc`, {
       headers: getHeaders()
     });
-    if (!res.ok) return null;
-    return await res.json();
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[Supabase Error] fetchGuests (${res.status}):`, errText);
+      return null;
+    }
+    const data = await res.json();
+    console.log(`[Supabase] Loaded ${Array.isArray(data) ? data.length : 0} HR guests from cloud database.`);
+    return data;
   } catch (err) {
-    console.error('Supabase fetchGuests error:', err.message);
+    console.error('[Supabase Exception] fetchGuests:', err.message);
     return null;
   }
 }
 
-// 2. Search HR Guests with ILIKE partial match
+// 2. Fetch all Check-Ins from Supabase
+async function fetchCheckIns() {
+  const key = getSupabaseKey();
+  if (!SUPABASE_URL || !key) return null;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/check_ins?select=*&order=id.asc`, {
+      headers: getHeaders()
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[Supabase Error] fetchCheckIns (${res.status}):`, errText);
+      return null;
+    }
+    const data = await res.json();
+    console.log(`[Supabase] Loaded ${Array.isArray(data) ? data.length : 0} check-in records from cloud database.`);
+    return data;
+  } catch (err) {
+    console.error('[Supabase Exception] fetchCheckIns:', err.message);
+    return null;
+  }
+}
+
+// 3. Search HR Guests with ILIKE partial match
 async function searchGuests(query, activeDate = null) {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+  const key = getSupabaseKey();
+  if (!SUPABASE_URL || !key) return null;
   if (!query || !query.trim()) {
     return { query: '', exactMatch: null, possibleMatches: [], alreadyCheckedIn: false, checkInInfo: null };
   }
@@ -38,7 +76,6 @@ async function searchGuests(query, activeDate = null) {
   const lowerQ = cleanQ.toLowerCase();
 
   try {
-    // Search across full_name, company_name, email, mobile_number, designation
     const searchUrl = `${SUPABASE_URL}/rest/v1/hr_guests?select=*&or=(full_name.ilike.*${encodeURIComponent(cleanQ)}*,company_name.ilike.*${encodeURIComponent(cleanQ)}*,email.ilike.*${encodeURIComponent(cleanQ)}*,mobile_number.ilike.*${encodeURIComponent(cleanQ)}*,designation.ilike.*${encodeURIComponent(cleanQ)}*)`;
     const res = await fetch(searchUrl, { headers: getHeaders() });
     
@@ -46,7 +83,8 @@ async function searchGuests(query, activeDate = null) {
     if (res.ok) {
       matches = await res.json();
     } else {
-      // If table missing or error, return null to fallback
+      const errText = await res.text();
+      console.error(`[Supabase Error] searchGuests (${res.status}):`, errText);
       return null;
     }
 
@@ -98,14 +136,15 @@ async function searchGuests(query, activeDate = null) {
       checkInInfo
     };
   } catch (err) {
-    console.error('Supabase search error:', err.message);
+    console.error('[Supabase Exception] searchGuests:', err.message);
     return null;
   }
 }
 
-// 3. Add Single HR Guest
+// 4. Add Single HR Guest
 async function addGuest(hrData) {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+  const key = getSupabaseKey();
+  if (!SUPABASE_URL || !key) return null;
   try {
     const payload = [{
       full_name: (hrData.full_name || '').trim(),
@@ -128,25 +167,31 @@ async function addGuest(hrData) {
       body: JSON.stringify(payload)
     });
 
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[Supabase Error] addGuest (${res.status}):`, errText);
+      return null;
+    }
     const inserted = await res.json();
-    const guest = inserted[0];
+    const guest = Array.isArray(inserted) ? inserted[0] : null;
 
     let checkInResult = null;
     if (hrData.autoCheckIn && guest) {
       checkInResult = await checkInGuest(guest.id, hrData.operator || 'Desk Operator');
     }
 
+    console.log(`[Supabase] Successfully added HR guest "${guest ? guest.full_name : hrData.full_name}" (ID: ${guest ? guest.id : 'N/A'})`);
     return { success: true, guest, checkInResult };
   } catch (err) {
-    console.error('Supabase addGuest error:', err.message);
+    console.error('[Supabase Exception] addGuest:', err.message);
     return null;
   }
 }
 
-// 4. Update HR Guest
+// 5. Update HR Guest
 async function updateGuest(id, hrData) {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+  const key = getSupabaseKey();
+  if (!SUPABASE_URL || !key) return null;
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/hr_guests?id=eq.${id}`, {
       method: 'PATCH',
@@ -165,34 +210,47 @@ async function updateGuest(id, hrData) {
         updated_at: new Date().toISOString()
       })
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[Supabase Error] updateGuest (${res.status}):`, errText);
+      return null;
+    }
     const updated = await res.json();
-    return { success: true, guest: updated[0] };
+    const guest = Array.isArray(updated) ? updated[0] : updated;
+    console.log(`[Supabase] Successfully updated HR guest ID ${id}`);
+    return { success: true, guest };
   } catch (err) {
-    console.error('Supabase updateGuest error:', err.message);
+    console.error('[Supabase Exception] updateGuest:', err.message);
     return null;
   }
 }
 
-// 5. Delete HR Guest
+// 6. Delete HR Guest
 async function deleteGuest(id) {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+  const key = getSupabaseKey();
+  if (!SUPABASE_URL || !key) return null;
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/hr_guests?id=eq.${id}`, {
       method: 'DELETE',
       headers: getHeaders()
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[Supabase Error] deleteGuest (${res.status}):`, errText);
+      return null;
+    }
+    console.log(`[Supabase] Successfully deleted HR guest ID ${id}`);
     return { success: true, message: 'HR record deleted from Supabase' };
   } catch (err) {
-    console.error('Supabase deleteGuest error:', err.message);
+    console.error('[Supabase Exception] deleteGuest:', err.message);
     return null;
   }
 }
 
-// 6. Check-In HR Guest
+// 7. Check-In HR Guest
 async function checkInGuest(hrGuestId, operator = 'Desk Operator', checkInDate = null) {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+  const key = getSupabaseKey();
+  if (!SUPABASE_URL || !key) return null;
   try {
     const now = new Date();
     const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
@@ -204,7 +262,7 @@ async function checkInGuest(hrGuestId, operator = 'Desk Operator', checkInDate =
     });
     if (checkRes.ok) {
       const existing = await checkRes.json();
-      const existingForDate = existing.find(c => c.check_in_date === dateStr || (c.check_in_date || '').includes(dateStr.substring(0, 6)));
+      const existingForDate = (existing || []).find(c => c.check_in_date === dateStr || (c.check_in_date || '').includes(dateStr.substring(0, 6)));
       if (existingForDate) {
         return {
           success: false,
@@ -219,9 +277,13 @@ async function checkInGuest(hrGuestId, operator = 'Desk Operator', checkInDate =
     const guestRes = await fetch(`${SUPABASE_URL}/rest/v1/hr_guests?id=eq.${hrGuestId}`, {
       headers: getHeaders()
     });
-    if (!guestRes.ok) return null;
+    if (!guestRes.ok) {
+      const errText = await guestRes.text();
+      console.error(`[Supabase Error] checkInGuest guest fetch (${guestRes.status}):`, errText);
+      return null;
+    }
     const guests = await guestRes.json();
-    if (guests.length === 0) return { success: false, message: 'HR record not found' };
+    if (!guests || guests.length === 0) return { success: false, message: 'HR record not found' };
     const guest = guests[0];
 
     const payload = [{
@@ -241,30 +303,37 @@ async function checkInGuest(hrGuestId, operator = 'Desk Operator', checkInDate =
       body: JSON.stringify(payload)
     });
 
-    if (!insertRes.ok) return null;
+    if (!insertRes.ok) {
+      const errText = await insertRes.text();
+      console.error(`[Supabase Error] checkInGuest insert (${insertRes.status}):`, errText);
+      return null;
+    }
     const inserted = await insertRes.json();
+    const record = Array.isArray(inserted) ? inserted[0] : inserted;
+    console.log(`[Supabase] Recorded check-in for "${guest.full_name}" on ${dateStr} at ${timeStr}`);
     return {
       success: true,
       message: `ENTRY RECORDED SUCCESSFULLY for ${guest.full_name} (${dateStr})`,
-      checkInInfo: inserted[0]
+      checkInInfo: record
     };
   } catch (err) {
-    console.error('Supabase checkInGuest error:', err.message);
+    console.error('[Supabase Exception] checkInGuest:', err.message);
     return null;
   }
 }
 
-// 7. Batch Import CSV Records
+// 8. Batch Import CSV Records
 async function batchImportGuests(records) {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+  const key = getSupabaseKey();
+  if (!SUPABASE_URL || !key) return null;
   if (!Array.isArray(records) || records.length === 0) {
     return { success: false, message: 'No records provided for import' };
   }
 
   try {
     const existingGuests = await fetchGuests();
-    const existingEmails = new Set((existingGuests || []).map(g => (g.email || '').toLowerCase().trim()));
-    const existingMobiles = new Set((existingGuests || []).map(g => (g.mobile_number || '').replace(/\D/g, '')));
+    const existingEmails = new Set((existingGuests || []).map(g => (g.email || '').toLowerCase().trim()).filter(Boolean));
+    const existingMobiles = new Set((existingGuests || []).map(g => (g.mobile_number || '').replace(/\D/g, '')).filter(Boolean));
 
     const toInsert = [];
     let dupCount = 0;
@@ -305,50 +374,130 @@ async function batchImportGuests(records) {
       return { success: true, addedCount: 0, duplicateCount: dupCount, message: `All ${dupCount} records were duplicates and skipped.` };
     }
 
-    // Batch insert into Supabase PostgREST endpoint
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/hr_guests`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(toInsert)
-    });
+    // Insert in chunks of 100
+    const chunkSize = 100;
+    let totalInserted = 0;
 
-    if (!res.ok) {
-      const errText = await res.text();
-      console.warn('Supabase batch import failed, falling back to local storage:', res.status, errText);
-      return null;
+    for (let i = 0; i < toInsert.length; i += chunkSize) {
+      const chunk = toInsert.slice(i, i + chunkSize);
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/hr_guests`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(chunk)
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error(`[Supabase Error] batchImportGuests chunk ${i} (${res.status}):`, errText);
+        return null;
+      }
+
+      const insertedChunk = await res.json();
+      totalInserted += Array.isArray(insertedChunk) ? insertedChunk.length : chunk.length;
     }
 
-    let inserted = [];
-    try {
-      inserted = await res.json();
-    } catch (e) {
-      inserted = toInsert;
-    }
-
+    console.log(`[Supabase] Batch imported ${totalInserted} HR records (${dupCount} duplicates skipped).`);
     return {
       success: true,
-      addedCount: Array.isArray(inserted) ? inserted.length : toInsert.length,
+      addedCount: totalInserted,
       duplicateCount: dupCount,
       totalParsed: records.length,
-      message: `Successfully imported ${Array.isArray(inserted) ? inserted.length : toInsert.length} HR records into database. (${dupCount} duplicates skipped)`
+      message: `Successfully imported ${totalInserted} HR records into Supabase. (${dupCount} duplicates skipped)`
     };
   } catch (err) {
-    console.error('Supabase batchImport error:', err.message);
+    console.error('[Supabase Exception] batchImportGuests:', err.message);
     return null;
   }
 }
 
-// 8. Flush / Clear All Data from Supabase
-async function flushAllData() {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+// 9. Bulk Seed Guests into Supabase (Chunks of 100)
+async function seedBulkGuests(records) {
+  const key = getSupabaseKey();
+  if (!SUPABASE_URL || !key) return null;
+  if (!Array.isArray(records) || records.length === 0) return { success: true, inserted: 0 };
+
+  console.log(`[Supabase Seed] Starting bulk seed of ${records.length} HR records into Supabase...`);
+  const chunkSize = 100;
+  let insertedTotal = 0;
+
+  for (let i = 0; i < records.length; i += chunkSize) {
+    const chunk = records.slice(i, i + chunkSize).map(r => ({
+      full_name: (r.full_name || '').trim(),
+      designation: (r.designation || 'HR Professional').trim(),
+      company_name: (r.company_name || 'Independent').trim(),
+      email: (r.email || '').trim(),
+      mobile_number: (r.mobile_number || '').trim(),
+      address: (r.address || '').trim(),
+      role: r.role || 'Delegate',
+      attendance_dates: r.attendance_dates || '22 Aug 2026',
+      invited_by: (r.invited_by || 'CSV Import').trim(),
+      status: r.status || 'Registered',
+      remarks: (r.remarks || '').trim(),
+      is_walk_in: r.is_walk_in || false
+    }));
+
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/hr_guests`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(chunk)
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error(`[Supabase Seed Error] Chunk ${i}-${i + chunk.length} (${res.status}):`, errText);
+        return null;
+      }
+
+      const inserted = await res.json();
+      insertedTotal += Array.isArray(inserted) ? inserted.length : chunk.length;
+      console.log(`[Supabase Seed] Chunk ${Math.floor(i / chunkSize) + 1} (${insertedTotal}/${records.length}) seeded.`);
+    } catch (err) {
+      console.error(`[Supabase Seed Exception] Chunk ${i}:`, err.message);
+      return null;
+    }
+  }
+
+  console.log(`[Supabase Seed Complete] Total ${insertedTotal} HR records seeded into cloud database.`);
+  return { success: true, inserted: insertedTotal };
+}
+
+// 10. Bulk Seed Check-Ins into Supabase
+async function seedBulkCheckIns(checkIns) {
+  const key = getSupabaseKey();
+  if (!SUPABASE_URL || !key) return null;
+  if (!Array.isArray(checkIns) || checkIns.length === 0) return { success: true, inserted: 0 };
+
+  console.log(`[Supabase Seed] Seeding ${checkIns.length} check-in records to Supabase...`);
   try {
-    // Delete check-ins first (FK reference)
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/check_ins`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(checkIns)
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[Supabase Seed Error] seedBulkCheckIns (${res.status}):`, errText);
+      return null;
+    }
+    const inserted = await res.json();
+    return { success: true, inserted: Array.isArray(inserted) ? inserted.length : checkIns.length };
+  } catch (err) {
+    console.error('[Supabase Seed Exception] seedBulkCheckIns:', err.message);
+    return null;
+  }
+}
+
+// 11. Flush / Clear All Data from Supabase
+async function flushAllData() {
+  const key = getSupabaseKey();
+  if (!SUPABASE_URL || !key) return null;
+  try {
     await fetch(`${SUPABASE_URL}/rest/v1/check_ins?id=gte.0`, {
       method: 'DELETE',
       headers: getHeaders()
     });
 
-    // Delete hr_guests
     const res = await fetch(`${SUPABASE_URL}/rest/v1/hr_guests?id=gte.0`, {
       method: 'DELETE',
       headers: getHeaders()
@@ -356,24 +505,28 @@ async function flushAllData() {
 
     if (!res.ok) {
       const errText = await res.text();
-      console.warn('Supabase flush warning:', res.status, errText);
+      console.warn('[Supabase Warning] flushAllData:', res.status, errText);
       return null;
     }
 
+    console.log('[Supabase] All HR guest and check-in records have been flushed.');
     return { success: true, message: 'All HR guest and check-in records have been flushed from Supabase.' };
   } catch (err) {
-    console.error('Supabase flushAllData error:', err.message);
+    console.error('[Supabase Exception] flushAllData:', err.message);
     return null;
   }
 }
 
 module.exports = {
   fetchGuests,
+  fetchCheckIns,
   searchGuests,
   addGuest,
   updateGuest,
   deleteGuest,
   checkInGuest,
   batchImportGuests,
+  seedBulkGuests,
+  seedBulkCheckIns,
   flushAllData
 };
