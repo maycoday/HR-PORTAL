@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const db = require('./db');
 
 const app = express();
@@ -11,9 +12,26 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Serve frontend static files
+// Serve frontend static files & assets
 const frontendPath = path.join(__dirname, '..', 'frontend');
+const assetsPath = path.join(__dirname, '..', 'assets');
+const frontendAssetsPath = path.join(__dirname, '..', 'frontend', 'assets');
+
+try {
+  if (fs.existsSync(assetsPath)) {
+    if (!fs.existsSync(frontendAssetsPath)) {
+      fs.mkdirSync(frontendAssetsPath, { recursive: true });
+    }
+    fs.readdirSync(assetsPath).forEach(file => {
+      fs.copyFileSync(path.join(assetsPath, file), path.join(frontendAssetsPath, file));
+    });
+  }
+} catch (err) {
+  console.error('Assets sync error:', err.message);
+}
+
 app.use(express.static(frontendPath));
+app.use('/assets', express.static(assetsPath));
 
 // API Routes
 
