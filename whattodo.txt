@@ -1,0 +1,588 @@
+# Build a Fast HR Summit HR Registration & Verification Portal
+
+I want you to help me design and build a complete web application for an **HR Summit at MIT India Hackathon**.
+
+## 1. Important Clarification
+
+This is **NOT a participant management portal**.
+
+Do not create concepts such as students, participants, candidates, applicants, or general event participants.
+
+This portal is **ONLY for HR guests/HR professionals attending the HR Summit**.
+
+The purpose of the application is to help the registration desk quickly find, verify, register, and check in HR guests.
+
+---
+
+# 2. The Real-World Problem
+
+We currently have approximately **700 HR professionals** who may attend the HR Summit.
+
+At the physical registration desk, one staff member will operate this portal.
+
+An HR guest will arrive and provide their name or other details.
+
+The desk operator should be able to:
+
+1. Search for the HR.
+2. Quickly identify whether the HR exists in our database.
+3. See their details.
+4. Verify them.
+5. Allow entry/check them in.
+6. Handle spelling mistakes or incomplete information gracefully.
+7. Add a legitimate HR who is missing from the database.
+
+The most important requirement is:
+
+> **Do NOT reject a legitimate HR just because their name is misspelled, incomplete, or slightly different from the database.**
+
+The application should help the registration desk identify the correct person.
+
+---
+
+# 3. Existing HR Data
+
+Our existing Excel data contains approximately 700 HR records.
+
+Current information available includes:
+
+* Full Name
+* Designation
+* Company
+* Email
+* Address
+* Role
+* Date of Attendance
+* Invited By
+
+There are only two summit dates:
+
+* 22 August 2026
+* 23 August 2026
+
+Some HRs may attend both days.
+
+Some HR records may currently have an unconfirmed date.
+
+The current Excel sample has:
+
+* 47 total HRs
+* 17 attending on 22 August
+* 18 attending on 23 August
+* 10 attending both days
+* 2 with date not confirmed
+
+This is only the current sample. The actual database should support approximately 700+ HRs.
+
+---
+
+# 4. Core Registration Desk Workflow
+
+The main screen should be extremely simple and fast.
+
+The operator should see a large search box:
+
+"Search HR by name, email, mobile number or company"
+
+When the operator searches:
+
+## Case A — Exact Match
+
+Show a clear green verification card:
+
+VERIFIED
+
+Full Name
+Designation
+Company
+Email
+Mobile
+Role
+Attendance Date
+Invited By
+
+Then provide:
+
+**ALLOW ENTRY / CHECK IN**
+
+After clicking it:
+
+**ENTRY RECORDED SUCCESSFULLY**
+
+Store the check-in time.
+
+---
+
+# 5. Case B — Name Not Found
+
+Do NOT immediately show:
+
+"ENTRY DENIED"
+
+Instead show:
+
+**No exact match found**
+
+Then automatically provide possible ways to find the HR:
+
+* Partial name search
+* Similar names
+* Company-wise search
+* Email search
+* Mobile search
+* Designation search
+
+For example, if the operator searches:
+
+"Rahul Sharma"
+
+the system might show:
+
+Rahul Sharma — ABC Technologies
+Rahul S Sharma — ABC Technologies
+Rahul Sharma — TCS
+Rahul Kumar — ABC Technologies
+
+The operator can identify the correct HR.
+
+---
+
+# 6. Fuzzy / Flexible Search
+
+Search should not depend only on exact spelling.
+
+It should handle cases such as:
+
+"Rahul Sharma"
+
+"Rahul Sharm"
+
+"Rahul S Sharma"
+
+"rahul"
+
+"RAHUL SHARMA"
+
+The search should be case-insensitive and support partial matching.
+
+If practical with the selected database, implement fuzzy/similarity search as well.
+
+Search should work across:
+
+* Name
+* Company
+* Email
+* Mobile
+* Designation
+
+---
+
+# 7. Company-Wise Search
+
+This is very important.
+
+If an HR says:
+
+"I'm from Deloitte"
+
+the operator should be able to search/select:
+
+Deloitte
+
+and see all matching HRs from that company.
+
+Example:
+
+| Name        | Designation | Date   | Role     | Status     |
+| ----------- | ----------- | ------ | -------- | ---------- |
+| Rahul Mehta | HRBP        | 22 Aug | Delegate | Registered |
+| Priya Shah  | HR Manager  | 22 Aug | Speaker  | Registered |
+| Amit Jain   | Talent Lead | 23 Aug | Delegate | Registered |
+
+This should make it very easy to identify HRs when their name is unclear.
+
+---
+
+# 8. New HR / Walk-In Addition
+
+If a legitimate HR is not present in the existing database, the operator should have an option:
+
+**ADD NEW HR**
+
+Fields:
+
+* Name
+* Designation
+* Company
+* Email
+* Mobile Number
+* Address
+* Role
+* Attendance Date
+* Invited By
+* Remarks
+
+Most fields should be optional because the registration desk should not unnecessarily block a legitimate HR.
+
+However, at least enough information should be collected to identify the HR.
+
+After saving:
+
+**HR ADDED SUCCESSFULLY**
+
+Then allow the operator to check them in.
+
+---
+
+# 9. Duplicate Check-In Protection
+
+If an HR has already checked in, do not allow accidental duplicate entry.
+
+Instead show:
+
+**ALREADY CHECKED IN**
+
+Display:
+
+* HR name
+* Company
+* Check-in date
+* Check-in time
+
+Example:
+
+"Ajay Sharma has already checked in at 10:42 AM."
+
+---
+
+# 10. Status Design
+
+Use three primary states:
+
+### GREEN — VERIFIED
+
+The HR exists and can enter.
+
+### YELLOW — POSSIBLE MATCH
+
+The system found possible matches and the operator should verify the correct HR.
+
+### RED/NEUTRAL — NO RECORD FOUND
+
+No suitable record was found.
+
+Do NOT make the interface aggressively say "Rejected" because the goal is to help the registration desk handle genuine HRs respectfully.
+
+---
+
+# 11. Admin Dashboard
+
+Create a separate admin section.
+
+Admin should be able to:
+
+* View total HRs
+* View checked-in HRs
+* View pending HRs
+* Search HRs
+* Filter by company
+* Filter by date
+* Add HR
+* Edit HR
+* Delete HR
+* View check-in history
+* Import Excel/CSV
+* Export data
+* View newly added/walk-in HRs
+
+Dashboard should show cards such as:
+
+Total HRs
+Checked In
+Not Checked In
+22 Aug
+23 Aug
+Both Days
+Date Pending
+Walk-ins
+
+All counts should be dynamically calculated from the database.
+
+---
+
+# 12. Excel Import
+
+We already have the HR data in Excel.
+
+Do NOT make us manually enter 700 HRs.
+
+Create an Excel/CSV import feature.
+
+Flow:
+
+Upload Excel/CSV
+
+→ Validate columns
+
+→ Preview records
+
+→ Detect duplicates/errors
+
+→ Confirm Import
+
+→ Insert into database
+
+The system should not blindly insert duplicate records.
+
+---
+
+# 13. Database Recommendation
+
+I want this application to be fast and reliable.
+
+The expected initial dataset is approximately 700 HRs, but design the database so it can comfortably scale beyond that.
+
+Prefer a proper database rather than relying directly on Google Sheets for the live registration system.
+
+Recommended option:
+
+**Supabase PostgreSQL**
+i will provide the detaisl in env of it
+Reasons:
+
+* Fast queries
+* Easy REST/API integration
+* Easy deployment
+* Good for 700+ records
+* Easy filtering/search
+* Authentication support
+* Easy future scaling
+* Simple integration with frontend
+
+
+---
+
+# 14. Suggested Database Structure
+
+Design a clean relational schema.
+
+Possible tables:
+
+## hr_guests
+
+* id
+* full_name
+* designation
+* company_name
+* email
+* mobile_number
+* address
+* invited_by
+* status
+* remarks
+* created_at
+* updated_at
+
+## summit_dates
+
+* id
+* event_date
+
+## hr_registrations
+
+* id
+* hr_guest_id
+* summit_date_id
+* role
+* check_in_status
+* check_in_time
+* created_at
+* updated_at
+
+This should support one HR attending one or both days.
+
+If you believe a simpler schema is better for this use case, explain why before implementing it.
+
+---
+
+# 15. Check-In Audit
+
+Every entry/check-in should record:
+
+* HR
+* Date
+* Time
+* Action
+* Operator if authentication is implemented
+
+This will allow us to know who entered and when.
+
+---
+
+# 16. UI/UX Requirements
+
+This is primarily a **registration desk application**, so speed and simplicity are more important than fancy animations.
+
+The main registration screen should have:
+
+* Large search bar
+* Very clear search results
+* Large verification status
+* Large "Check In" button
+* Minimal clicks
+* Minimal typing
+* Mobile/tablet/desktop responsive design
+* Clear green/yellow/red status indicators
+* Professional HR Summit branding
+* Clean modern UI
+* Fast loading
+* Keyboard-friendly interaction
+
+The registration operator should ideally be able to complete:
+
+**Search → Identify → Verify → Check-In**
+
+within approximately 10–15 seconds.
+
+---
+
+# 17. Suggested Pages
+
+Create these pages:
+
+### `/`
+
+Main HR Verification / Registration Desk
+
+### `/admin`
+
+Admin Dashboard
+
+### `/admin/hr`
+
+HR Management
+
+### `/admin/import`
+
+Excel/CSV Import
+
+### `/admin/attendance`
+
+Check-in / Attendance Records
+
+If you think a different routing structure is cleaner, use it.
+
+---
+
+# 18. Important Edge Cases
+
+The system must handle:
+
+* Same name, different companies
+* Same person attending both days
+* Misspelled names
+* Partial names
+* Missing email
+* Missing mobile
+* Missing date
+* Missing designation
+* Missing company
+* New walk-in HR
+* Duplicate HR records
+* Already checked-in HR
+* Multiple HRs from same company
+* Case-insensitive search
+* Extra spaces in names
+* Different name formats
+
+Do not create a rigid system that blocks the operator unnecessarily.
+
+---
+
+# 19. Performance
+
+The registration desk is the most critical part.
+
+Optimize search and database queries.
+
+The application should feel instant for approximately 700–5,000+ HR records.
+
+Do not perform unnecessary API calls.
+
+Use appropriate database indexes.
+
+At minimum, consider indexes for:
+
+* full_name
+* company_name
+* email
+* mobile_number
+
+If fuzzy search is implemented, use the appropriate PostgreSQL approach/indexing.
+
+---
+
+# 20. Technology
+
+Use a practical stack.
+
+Preferred:
+
+Frontend:
+
+* HTML
+* CSS
+* JavaScript
+
+Backend:
+
+* Node.js
+* Express.js
+
+Database:
+
+* Supabase PostgreSQL
+
+You may use libraries where they significantly improve reliability or UX.
+
+Keep the architecture clean and easy to understand.
+
+---
+
+# 21. Development Approach
+
+Do not just give me a theoretical explanation.
+
+I want to actually build this application.
+
+First:
+
+1. Understand the requirements.
+2. Propose the final architecture.
+3. Propose the database schema.
+4. Explain the complete user flow.
+5. Identify any missing requirements.
+6. Then start implementing the MVP.
+
+Prioritize the **Registration Desk Verification screen first**, because that is the most important feature.
+
+After that implement:
+
+1. Check-in
+2. New HR addition
+3. Flexible search
+4. Company-wise search
+5. Admin dashboard
+6. Excel import/export
+7. Authentication/security
+8. Audit history
+
+Build the project in a modular and maintainable way.
+
+Do not over-engineer it.
+
+The final application should feel like a polished, professional **HR Summit Registration & Verification Portal**, not a generic CRUD application.
+
+Most importantly:
+
+> The registration desk should be able to find and verify a genuine HR quickly, even if the information provided by the HR does not exactly match the original Excel record.
