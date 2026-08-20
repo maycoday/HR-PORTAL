@@ -11,6 +11,7 @@
     href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500&family=Inter:wght@400;500;600;700&display=swap"
     rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:,">
 </head>
 
 <body>
@@ -18,14 +19,19 @@
   <!-- ===== Header ===== -->
   <header class="site-header">
     <div class="header-inner">
-      <div class="brand" title="MIT India - Maharashtra Institute of Technology">
-        <img src="assets/BLACK LOGO.jpg" onerror="if(!this.dataset.fallback){this.dataset.fallback=1;this.src='../assets/BLACK LOGO.jpg';}" alt="MIT India - Maharashtra Institute of Technology" class="brand-logo logo-light">
-        <img src="assets/WHITE LOGO.png" onerror="if(!this.dataset.fallback){this.dataset.fallback=1;this.src='../assets/WHITE LOGO.png';}" alt="MIT India - Maharashtra Institute of Technology" class="brand-logo logo-dark">
+      <div class="brand-group" title="MIT India & IRS">
+        <div class="brand">
+          <img src="assets/BLACK LOGO.jpg" onerror="if(!this.dataset.fallback){this.dataset.fallback=1;this.src='../assets/BLACK LOGO.jpg';}" alt="MIT India - Maharashtra Institute of Technology" class="brand-logo logo-light">
+          <img src="assets/WHITE LOGO.png" onerror="if(!this.dataset.fallback){this.dataset.fallback=1;this.src='../assets/WHITE LOGO.png';}" alt="MIT India - Maharashtra Institute of Technology" class="brand-logo logo-dark">
+        </div>
+        <!-- <span class="brand-divider">×</span> -->
+        <div class="brand-irs" title="IRS">
+          <img src="assets/IRS.png" onerror="if(!this.dataset.fallback){this.dataset.fallback=1;this.src='../assets/IRS.png';}" alt="IRS" class="brand-logo-irs">
+        </div>
       </div>
 
       <nav class="header-nav" aria-label="Primary Navigation">
-        <button type="button" class="nav-pill active" id="nav-btn-desk" onclick="switchView('desk')">Verify
-          Entry</button>
+        <button type="button" class="nav-pill active" id="nav-btn-desk" onclick="switchDeskMode('checkin')">Verification</button>
         <button type="button" class="nav-pill" id="nav-btn-admin" onclick="switchView('admin')">Admin Dashboard</button>
       </nav>
 
@@ -56,7 +62,7 @@
         <div class="landing-hero-content">
           <p class="eyebrow">
             <span class="eyebrow-dot dot-orange" aria-hidden="true"></span>
-            22&ndash;23 August 2026 &middot; MIT India Campus, Pune
+            21&ndash;22 August 2026 &middot; MIT India Campus, Pune
             <span class="eyebrow-dot dot-green" aria-hidden="true"></span>
           </p>
 
@@ -70,7 +76,7 @@
 
           <!-- Hero Action Buttons -->
           <div class="landing-actions">
-            <button type="button" class="btn-hero-primary" onclick="openDeskSearch()">
+            <button type="button" class="btn-hero-primary" onclick="openDeskSearch('checkin')">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
                 <circle cx="11" cy="11" r="7" />
                 <path d="M21 21l-4.35-4.35" />
@@ -98,7 +104,16 @@
             </svg>
             Back to Home
           </button>
-          <span class="desk-session-title">HR Summit 2026 &middot; Live Registration Desk</span>
+          <div class="segmented-mode-switch" role="tablist" aria-label="Verification Desk Mode">
+            <button type="button" class="mode-tab active" id="mode-btn-checkin" role="tab" aria-selected="true" onclick="setDeskMode('checkin')">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+              Check-In Mode
+            </button>
+            <button type="button" class="mode-tab" id="mode-btn-checkout" role="tab" aria-selected="false" onclick="setDeskMode('checkout')">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              Check-Out Mode
+            </button>
+          </div>
           <button type="button" class="btn btn-sm btn-secondary" onclick="openWalkinModal()">+ Add Walk-in HR</button>
         </div>
 
@@ -108,7 +123,7 @@
           <section class="search-section" id="search">
             <div class="search-card">
               <div class="search-card-head">
-                <span class="verify-badge" aria-hidden="true">
+                <span class="verify-badge" id="desk-mode-badge" aria-hidden="true">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M9 12.5L11.2 14.7L15.5 9.8" stroke="#3F6B4E" stroke-width="1.8" stroke-linecap="round"
                       stroke-linejoin="round" />
@@ -116,8 +131,8 @@
                   </svg>
                 </span>
                 <div>
-                  <h2 class="search-title">Find &amp; verify an HR delegate</h2>
-                  <p class="search-caption">Search by name, company, email, or mobile number</p>
+                  <h2 class="search-title" id="desk-search-title">Find &amp; verify an HR delegate</h2>
+                  <p class="search-caption" id="desk-search-caption">Search by name, company, email, or mobile number</p>
                 </div>
               </div>
 
@@ -226,6 +241,11 @@
               <span class="stat-value" id="stat-checkedin">0</span>
               <span class="stat-foot" id="stat-checkedin-pct">0% Attended</span>
             </div>
+            <div class="stat-card stat-card--purple">
+              <span class="stat-label">Total Check-outs</span>
+              <span class="stat-value" id="stat-checkedout">0</span>
+              <span class="stat-foot" id="stat-checkedout-pct">0% Checked Out</span>
+            </div>
             <div class="stat-card stat-card--warning">
               <span class="stat-label">Not Checked In</span>
               <span class="stat-value" id="stat-pending">0</span>
@@ -245,6 +265,7 @@
               Management</button>
             <button type="button" class="admin-tab" id="tab-btn-audit" onclick="switchAdminTab('audit')">Check-in Audit
               Logs</button>
+            <button type="button" class="admin-tab" id="tab-btn-checkout-audit" onclick="switchAdminTab('checkout-audit')">Checkout Audit Logs</button>
           </div>
 
           <!-- TAB 1: HR MANAGEMENT TABLE -->
@@ -312,6 +333,49 @@
                   </tr>
                 </thead>
                 <tbody id="audit-table-body">
+                  <!-- Dynamically populated -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- TAB 3: CHECKOUT AUDIT LOGS TABLE -->
+          <div id="tab-checkout-audit" class="tab-content">
+            <div class="table-toolbar">
+              <div class="table-search-wrap">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input type="text" id="checkout-audit-search-input" class="table-search"
+                  placeholder="Search checkout logs by HR name or company..." oninput="renderCheckoutAuditLogsTable()">
+              </div>
+              <div class="table-filters">
+                <select id="filter-checkout-company" class="filter-select" onchange="renderCheckoutAuditLogsTable()">
+                  <option value="">All Companies</option>
+                </select>
+                <select id="filter-checkout-date" class="filter-select" onchange="renderCheckoutAuditLogsTable()">
+                  <option value="">All Checkout Dates</option>
+                  <option value="22 Aug">22 August 2026</option>
+                  <option value="23 Aug">23 August 2026</option>
+                  <option value="Both">Both Days</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>HR Guest Name</th>
+                    <th>Company Name</th>
+                    <th>Designation</th>
+                    <th>Check-in Date &amp; Time</th>
+                    <th>Checkout Time</th>
+                    <th>Checkout Status</th>
+                  </tr>
+                </thead>
+                <tbody id="checkout-audit-table-body">
                   <!-- Dynamically populated -->
                 </tbody>
               </table>
@@ -425,6 +489,11 @@
       <div class="modal-body">
         <p class="modal-desc">Upload a CSV or Excel file containing HR guest records. Duplicates will be automatically
           detected.</p>
+        <div style="margin-bottom: 16px;">
+          <button type="button" class="btn btn-secondary" onclick="downloadCSVTemplate()" style="font-size: 0.85rem; gap: 6px; padding: 6px 14px;">
+            📥 Download Sample CSV Template
+          </button>
+        </div>
 
         <div class="upload-zone" id="upload-zone">
           <input type="file" id="file-input" accept=".csv,.xlsx,.xls" onchange="handleFileSelect(event)">
@@ -432,6 +501,17 @@
           <p class="upload-title">Click to upload or drag &amp; drop file here</p>
           <p class="upload-sub">Supports CSV, XLSX, XLS (Columns: Name, Company, Designation, Email, Mobile, Date, Role)
           </p>
+        </div>
+
+        <div class="upload-status-summary" id="upload-status-summary" style="display: none;">
+          <div class="upload-success-badge">
+            <span class="upload-success-icon">✓</span>
+            <div class="upload-success-text">
+              <h4 id="upload-filename-display">HR_Data.csv uploaded successfully</h4>
+              <p id="upload-count-display">700 records ready to import</p>
+            </div>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="resetCSVUpload()">Replace / Upload Another CSV</button>
         </div>
 
         <div class="import-preview" id="import-preview" style="display: none;">
@@ -615,6 +695,16 @@
 
   <!-- Toast Container -->
   <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <!-- Floating Scroll Navigation Widget (Top & Bottom) -->
+  <div id="scroll-fab-container" class="scroll-fab-container">
+    <button type="button" class="btn-scroll-fab" onclick="scrollToTop()" title="Scroll to Top">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+    </button>
+    <button type="button" class="btn-scroll-fab" onclick="scrollToBottom()" title="Scroll to Bottom">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+    </button>
+  </div>
 
   <footer class="site-footer">
     <p>&copy; 2026 MIT India &middot; HR Summit Registration &amp; Verification Portal</p>

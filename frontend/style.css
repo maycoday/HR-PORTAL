@@ -62,6 +62,7 @@ body.dark-mode {
   --yellow-border: #5C471E;
   --red-bg: #3B1B18;
   --red-border: #5C2824;
+  --red-border: #5C2824;
 }
 
 * { box-sizing: border-box; }
@@ -104,24 +105,50 @@ body.dark-mode .site-header {
 }
 
 .header-inner {
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 16px 32px;
+  width: 100%;
+  max-width: 100%;
+  padding: 10px 24px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+}
+
+.brand-group {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 24px;
+  gap: 16px;
+  margin-left: 0;
+  padding-left: 0;
+  justify-self: start;
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .brand-logo {
-  height: 44px;
-  max-height: 48px;
+  height: 42px;
+  max-height: 46px;
+  width: auto;
+  object-fit: contain;
+  display: block;
+  transition: opacity 0.25s ease;
+}
+
+.brand-divider {
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: var(--ink-faint);
+  opacity: 0.5;
+  user-select: none;
+}
+
+.brand-irs .brand-logo-irs {
+  height: 40px;
+  max-height: 44px;
   width: auto;
   object-fit: contain;
   display: block;
@@ -153,6 +180,8 @@ body.dark-mode .brand-logo.logo-dark {
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-pill);
   padding: 4px;
+  box-shadow: 0 2px 8px rgba(34, 29, 21, 0.04);
+  justify-self: center;
 }
 
 .nav-pill {
@@ -176,6 +205,7 @@ body.dark-mode .brand-logo.logo-dark {
   display: flex;
   align-items: center;
   gap: 12px;
+  justify-self: end;
 }
 
 .desk-chip {
@@ -2170,4 +2200,235 @@ body.dark-mode .brand-logo.logo-dark {
   .form-group--full { grid-column: span 1; }
   .stats-grid { grid-template-columns: 1fr; }
   .details-list { grid-template-columns: 1fr; }
+}
+
+/* =========================================================
+   Checkout & Upload Fix UI Components
+   ========================================================= */
+
+/* Stat Card Terracotta / Checkout (Total Check-outs) */
+.stat-card--purple, .stat-card--checkout {
+  border-top-color: var(--terracotta);
+}
+.stat-card--purple .stat-value, .stat-card--checkout .stat-value {
+  color: var(--terracotta);
+}
+
+/* State Badge & Tags for Checkout */
+.state-badge--purple, .state-badge--checkout {
+  background: var(--terracotta-tint);
+  color: var(--terracotta-dark);
+  border: 1px solid var(--border);
+}
+
+.tag--purple, .tag--checkout {
+  background: var(--terracotta-tint);
+  color: var(--terracotta-dark);
+  border: 1px solid var(--border);
+}
+
+.state-card--checked-out {
+  border-color: var(--terracotta);
+  background: linear-gradient(180deg, var(--surface) 0%, var(--terracotta-tint) 160%);
+}
+
+.state-card--checkout-pending {
+  border-color: var(--terracotta);
+  background: linear-gradient(180deg, var(--surface) 0%, var(--terracotta-tint) 180%);
+}
+
+/* Primary Action: CHECK OUT Button */
+.btn-checkout {
+  width: 100%;
+  height: 54px;
+  padding: 0 24px;
+  background: var(--terracotta);
+  color: #ffffff;
+  border-radius: var(--radius-md);
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: all 0.2s ease;
+  box-shadow: var(--shadow-btn);
+}
+
+.btn-checkout:hover:not(:disabled) {
+  background: var(--terracotta-dark);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px -6px rgba(156, 91, 44, 0.65);
+}
+
+.btn-checkout:disabled, .btn-checkout--done {
+  background: var(--terracotta-tint);
+  color: var(--terracotta-dark);
+  border: 1px solid var(--border);
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 0.95;
+}
+
+.btn-checkout-sm {
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: var(--terracotta);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  transition: all 0.2s ease;
+}
+
+.btn-checkout-sm:hover {
+  background: var(--terracotta-dark);
+}
+
+/* Segmented Mode Switch (Check-In vs Check-Out) */
+.segmented-mode-switch {
+  display: inline-flex;
+  align-items: center;
+  background: var(--cream-bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 4px;
+  gap: 4px;
+  box-shadow: 0 2px 8px rgba(34, 29, 21, 0.05);
+}
+
+.mode-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 18px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--ink-muted);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mode-tab:hover:not(.active) {
+  color: var(--ink);
+  background: var(--surface-hover);
+}
+
+.mode-tab.active#mode-btn-checkin {
+  background: var(--green);
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(63, 107, 78, 0.35);
+}
+
+.mode-tab.active#mode-btn-checkout {
+  background: var(--terracotta);
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(184, 112, 60, 0.35);
+}
+
+.mode-tab svg {
+  transition: transform 0.2s ease;
+}
+
+.mode-tab:hover svg {
+  transform: scale(1.1);
+}
+
+.btn-checkout-sm:hover {
+  background: var(--purple-dark, #3730A3);
+}
+
+/* Upload Status Summary Card (CSV Fix) */
+.upload-status-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: var(--green-tint);
+  border: 1px solid var(--green);
+  border-radius: var(--radius-md);
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+
+.upload-success-badge {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.upload-success-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--green);
+  color: #fff;
+  font-size: 1.2rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.upload-success-text h4 {
+  margin: 0 0 3px;
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: var(--green-dark);
+}
+
+.upload-success-text p {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--green-dark);
+  opacity: 0.9;
+}
+
+/* Floating Scroll Buttons for Admin Table & Long Pages */
+.scroll-fab-container {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  z-index: 999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  transform: translateY(10px);
+}
+
+.scroll-fab-container.visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.btn-scroll-fab {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--terracotta);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(34, 29, 21, 0.25);
+  border: 2px solid var(--surface);
+  transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn-scroll-fab:hover {
+  background: var(--terracotta-dark);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(34, 29, 21, 0.35);
+}
+
+.btn-scroll-fab:active {
+  transform: translateY(0);
 }

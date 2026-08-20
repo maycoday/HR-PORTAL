@@ -3,6 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const db = require('./db');
+const supabase = require('./supabase');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -40,6 +41,21 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', event: 'HR Summit 2026', time: new Date().toISOString() });
 });
 
+// 1b. Database Health & Diagnostic Check
+app.get('/api/health/db', async (req, res) => {
+  try {
+    const diag = await supabase.testConnection();
+    const guests = await db.readGuests();
+    res.json({
+      status: diag.ok ? 'connected' : 'error',
+      supabase: diag,
+      guestCount: Array.isArray(guests) ? guests.length : 0
+    });
+  } catch (err) {
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
 // 2. Search HR
 app.get('/api/search', async (req, res) => {
   try {
@@ -69,6 +85,26 @@ app.post('/api/checkin', async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error('API /api/checkin error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 3b. Check-Out HR
+app.post('/api/checkout', async (req, res) => {
+  try {
+    const { hr_guest_id, operator, check_out_date } = req.body;
+    if (!hr_guest_id) {
+      return res.status(400).json({ success: false, message: 'hr_guest_id is required' });
+    }
+
+    const result = await db.checkOut(hr_guest_id, operator || 'Desk Operator', check_out_date || null);
+    if (!result.success && !result.alreadyCheckedOut) {
+      return res.status(400).json(result);
+    }
+
+    res.json(result);
+  } catch (err) {
+    console.error('API /api/checkout error:', err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -141,25 +177,38 @@ app.get('/api/admin/dashboard', async (req, res) => {
     const stats = await db.getAdminStats();
     const allGuests = await db.readGuests();
     const allCheckIns = await db.readCheckIns();
-    res.json({ success: true, stats, guests: allGuests, checkIns: allCheckIns });
+    const allCheckOuts = await db.readCheckOuts();
+    res.json({ success: true, stats, guests: allGuests, checkIns: allCheckIns, checkOuts: allCheckOuts });
   } catch (err) {
     console.error('API /api/admin/dashboard error:', err.message);
     res.json({
       success: true,
-      stats: { totalHRs: 0, checkedInCount: 0, notCheckedInCount: 0, count22Aug: 0, count23Aug: 0, countBothDays: 0, countDatePending: 0, countWalkIns: 0 },
+      stats: { totalHRs: 0, checkedInCount: 0, checkedOutCount: 0, notCheckedInCount: 0, count22Aug: 0, count23Aug: 0, countBothDays: 0, countDatePending: 0, countWalkIns: 0 },
       guests: [],
-      checkIns: []
+      checkIns: [],
+      checkOuts: []
     });
   }
 });
 
-// 10. Audit Log History
+// 10. Audit Log History (Check-ins)
 app.get('/api/admin/audit', async (req, res) => {
   try {
     const logs = await db.getAuditLogs();
     res.json({ success: true, count: logs.length, logs });
   } catch (err) {
     console.error('API /api/admin/audit error:', err.message);
+    res.json({ success: true, count: 0, logs: [] });
+  }
+});
+
+// 10b. Checkout Audit Log History
+app.get('/api/admin/checkout-audit', async (req, res) => {
+  try {
+    const logs = await db.getCheckoutAuditLogs();
+    res.json({ success: true, count: logs.length, logs });
+  } catch (err) {
+    console.error('API /api/admin/checkout-audit error:', err.message);
     res.json({ success: true, count: 0, logs: [] });
   }
 });

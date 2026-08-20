@@ -6,6 +6,7 @@
 // --- Global State & Storage Key ---
 const STORAGE_KEY_GUESTS = 'hr_summit_guests_v1';
 const STORAGE_KEY_CHECKINS = 'hr_summit_checkins_v1';
+const STORAGE_KEY_CHECKOUTS = 'hr_summit_checkouts_v1';
 const STORAGE_KEY_THEME = 'hr_summit_theme';
 
 function getLiveDateString() {
@@ -14,11 +15,13 @@ function getLiveDateString() {
 
 let isBackendAvailable = true;
 let currentView = 'desk'; // 'desk' | 'admin'
-let currentAdminTab = 'hr'; // 'hr' | 'audit'
+let currentDeskMode = 'checkin'; // 'checkin' | 'checkout'
+let currentAdminTab = 'hr'; // 'hr' | 'audit' | 'checkout-audit'
 let searchDebounceTimer = null;
 let currentCompanyFilter = null;
 let adminCachedGuests = [];
 let adminCachedCheckIns = [];
+let adminCachedCheckOuts = [];
 
 function populateAdminDateFilter() {
   const checkIns = (adminCachedCheckIns && adminCachedCheckIns.length > 0) ? adminCachedCheckIns : getLocalCheckIns();
@@ -51,6 +54,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initTheme();
   setupKeyboardShortcuts();
   checkLocalStorageInit();
+  initScrollFAB();
   await verifyBackendStatus();
   renderCompanyBar();
   refreshAdminData();
@@ -87,6 +91,27 @@ function setupKeyboardShortcuts() {
   });
 }
 
+// Floating Scroll FAB Controller (Top & Bottom)
+function initScrollFAB() {
+  window.addEventListener('scroll', () => {
+    const fabContainer = document.getElementById('scroll-fab-container');
+    if (!fabContainer) return;
+    if (window.scrollY > 200) {
+      fabContainer.classList.add('visible');
+    } else {
+      fabContainer.classList.remove('visible');
+    }
+  });
+}
+
+function scrollToTop() {
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function scrollToBottom() {
+  window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+}
+
 // Local Storage Setup
 function checkLocalStorageInit() {
   if (!localStorage.getItem(STORAGE_KEY_GUESTS)) {
@@ -94,6 +119,9 @@ function checkLocalStorageInit() {
   }
   if (!localStorage.getItem(STORAGE_KEY_CHECKINS)) {
     localStorage.setItem(STORAGE_KEY_CHECKINS, JSON.stringify([]));
+  }
+  if (!localStorage.getItem(STORAGE_KEY_CHECKOUTS)) {
+    localStorage.setItem(STORAGE_KEY_CHECKOUTS, JSON.stringify([]));
   }
 }
 
@@ -103,21 +131,65 @@ async function verifyBackendStatus() {
     const res = await fetch('/api/health');
     if (res.ok) {
       isBackendAvailable = true;
-    } else {
-      isBackendAvailable = false;
     }
   } catch (err) {
-    isBackendAvailable = false;
+    console.warn('Backend health check delayed:', err);
   }
 }
 
 // --- Navigation Controller ---
-function openDeskSearch() {
+function switchDeskMode(mode) {
+  switchView('desk');
+  setDeskMode(mode);
+  openDeskSearch(mode);
+}
+
+function setDeskMode(mode) {
+  currentDeskMode = mode;
+  const checkinNavBtn = document.getElementById('nav-btn-desk');
+  const checkoutNavBtn = document.getElementById('nav-btn-checkout');
+  if (checkinNavBtn) checkinNavBtn.classList.toggle('active', mode === 'checkin');
+  if (checkoutNavBtn) checkoutNavBtn.classList.toggle('active', mode === 'checkout');
+
+  const modeBtnCheckin = document.getElementById('mode-btn-checkin');
+  const modeBtnCheckout = document.getElementById('mode-btn-checkout');
+  if (modeBtnCheckin) modeBtnCheckin.classList.toggle('active', mode === 'checkin');
+  if (modeBtnCheckout) modeBtnCheckout.classList.toggle('active', mode === 'checkout');
+
+  const titleEl = document.getElementById('desk-search-title');
+  const capEl = document.getElementById('desk-search-caption');
+  const badgeEl = document.getElementById('desk-mode-badge');
+
+  if (mode === 'checkout') {
+    if (titleEl) titleEl.textContent = 'Find & verify an HR delegate for Check-Out';
+    if (capEl) capEl.textContent = 'Search by name, company, email, or mobile to record gift receipt & checkout';
+    if (badgeEl) {
+      badgeEl.style.background = 'var(--terracotta-tint)';
+      badgeEl.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="2.2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>`;
+    }
+  } else {
+    if (titleEl) titleEl.textContent = 'Find & verify an HR delegate';
+    if (capEl) capEl.textContent = 'Search by name, company, email, or mobile number';
+    if (badgeEl) {
+      badgeEl.style.background = '';
+      badgeEl.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 12.5L11.2 14.7L15.5 9.8" stroke="#3F6B4E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="9.25" stroke="#3F6B4E" stroke-width="1.4"/></svg>`;
+    }
+  }
+
+  const input = document.getElementById('search-input');
+  if (input && input.value) {
+    executeSearch(input.value);
+  }
+}
+
+function openDeskSearch(mode = 'checkin') {
   switchView('desk');
   const landing = document.getElementById('desk-landing-view');
   const workspace = document.getElementById('desk-workspace-view');
   if (landing) landing.style.display = 'none';
   if (workspace) workspace.style.display = 'block';
+
+  setDeskMode(mode);
 
   setTimeout(() => {
     const input = document.getElementById('search-input');
@@ -140,7 +212,11 @@ function switchView(viewName) {
 
   if (viewName === 'desk') {
     document.getElementById('view-desk').classList.add('active');
-    document.getElementById('nav-btn-desk').classList.add('active');
+    if (currentDeskMode === 'checkout') {
+      document.getElementById('nav-btn-checkout').classList.add('active');
+    } else {
+      document.getElementById('nav-btn-desk').classList.add('active');
+    }
   } else {
     document.getElementById('view-admin').classList.add('active');
     document.getElementById('nav-btn-admin').classList.add('active');
@@ -156,10 +232,16 @@ function switchAdminTab(tabName) {
   if (tabName === 'hr') {
     document.getElementById('tab-btn-hr').classList.add('active');
     document.getElementById('tab-hr').classList.add('active');
-  } else {
+  } else if (tabName === 'audit') {
     document.getElementById('tab-btn-audit').classList.add('active');
     document.getElementById('tab-audit').classList.add('active');
     renderAuditLogsTable();
+  } else if (tabName === 'checkout-audit') {
+    const btn = document.getElementById('tab-btn-checkout-audit');
+    const tab = document.getElementById('tab-checkout-audit');
+    if (btn) btn.classList.add('active');
+    if (tab) tab.classList.add('active');
+    renderCheckoutAuditLogsTable();
   }
 }
 
@@ -178,6 +260,14 @@ function getLocalCheckIns() {
 
 function saveLocalCheckIns(checkIns) {
   localStorage.setItem(STORAGE_KEY_CHECKINS, JSON.stringify(checkIns));
+}
+
+function getLocalCheckOuts() {
+  return JSON.parse(localStorage.getItem(STORAGE_KEY_CHECKOUTS) || '[]');
+}
+
+function saveLocalCheckOuts(checkOuts) {
+  localStorage.setItem(STORAGE_KEY_CHECKOUTS, JSON.stringify(checkOuts));
 }
 
 function normalize(str) {
@@ -247,21 +337,30 @@ async function executeSearch(rawQuery) {
 
   let searchResult = null;
 
-  if (isBackendAvailable) {
-    try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
-      if (res.ok) {
-        searchResult = await res.json();
-      }
-    } catch (err) {
-      console.warn('Backend search error, switching to local engine fallback:', err);
-      isBackendAvailable = false;
+  try {
+    const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+    if (res.ok) {
+      searchResult = await res.json();
+      isBackendAvailable = true;
     }
+  } catch (err) {
+    console.warn('Backend search error:', err);
   }
 
   // Fallback to local client engine if backend is unreachable
   if (!searchResult) {
     searchResult = executeLocalSearch(query);
+  }
+
+  // Merge client-side checkout cache into backend searchResult if present
+  if (searchResult && searchResult.exactMatch) {
+    const checkOuts = (adminCachedCheckOuts && adminCachedCheckOuts.length > 0) ? adminCachedCheckOuts : getLocalCheckOuts();
+    const exactId = parseInt(searchResult.exactMatch.id, 10);
+    const localCheckOut = checkOuts.find(c => parseInt(c.hr_guest_id, 10) === exactId);
+    if (localCheckOut) {
+      searchResult.alreadyCheckedOut = true;
+      searchResult.checkOutInfo = localCheckOut;
+    }
   }
 
   renderSearchResults(searchResult);
@@ -344,12 +443,22 @@ function executeLocalSearch(rawQuery) {
 
   let alreadyCheckedIn = false;
   let checkInInfo = null;
+  let alreadyCheckedOut = false;
+  let checkOutInfo = null;
 
   if (exactMatch) {
-    const guestCheckIns = checkIns.filter(c => c.hr_guest_id === exactMatch.id);
+    const exactId = parseInt(exactMatch.id, 10);
+    const guestCheckIns = checkIns.filter(c => parseInt(c.hr_guest_id, 10) === exactId);
     if (guestCheckIns.length > 0) {
       alreadyCheckedIn = true;
       checkInInfo = guestCheckIns[0];
+    }
+
+    const checkOuts = (adminCachedCheckOuts && adminCachedCheckOuts.length > 0) ? adminCachedCheckOuts : getLocalCheckOuts();
+    const guestCheckOuts = checkOuts.filter(c => parseInt(c.hr_guest_id, 10) === exactId);
+    if (guestCheckOuts.length > 0) {
+      alreadyCheckedOut = true;
+      checkOutInfo = guestCheckOuts[0];
     }
   }
 
@@ -358,16 +467,197 @@ function executeLocalSearch(rawQuery) {
     exactMatch,
     possibleMatches: sortedPossibles,
     alreadyCheckedIn,
-    checkInInfo
+    checkInInfo,
+    alreadyCheckedOut,
+    checkOutInfo
   };
 }
 
 // Render Search Result Cards
 function renderSearchResults(result) {
   const container = document.getElementById('results-container');
-  const { exactMatch, possibleMatches, alreadyCheckedIn, checkInInfo, query } = result;
+  let { exactMatch, possibleMatches, alreadyCheckedIn, checkInInfo, alreadyCheckedOut, checkOutInfo, query } = result;
 
   if (exactMatch) {
+    const checkOuts = (adminCachedCheckOuts && adminCachedCheckOuts.length > 0) ? adminCachedCheckOuts : getLocalCheckOuts();
+    const exactId = parseInt(exactMatch.id, 10);
+    const localCheckOut = checkOuts.find(c => parseInt(c.hr_guest_id, 10) === exactId);
+    if (localCheckOut) {
+      alreadyCheckedOut = true;
+      checkOutInfo = localCheckOut;
+    }
+    if (currentDeskMode === 'checkout') {
+      // DEDICATED CHECKOUT WINDOW / INTERFACE
+      if (alreadyCheckedOut) {
+        // CASE: ALREADY CHECKED OUT (COMPLETED CARD)
+        container.innerHTML = `
+          <div class="state-card state-card--checked-out">
+            <div class="state-header">
+              <span class="state-badge state-badge--checkout">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                CHECKOUT RECORDED (${escapeHTML(checkOutInfo.check_out_date)})
+              </span>
+              <span class="tag tag--checkout">${escapeHTML(exactMatch.role || 'Delegate')}</span>
+            </div>
+            <div class="guest-profile-grid">
+              <div class="guest-main">
+                <h3 class="guest-name">${escapeHTML(exactMatch.full_name)}</h3>
+                <p class="guest-desig">${escapeHTML(exactMatch.designation || 'HR Professional')}</p>
+                <p class="guest-company">🏢 ${escapeHTML(exactMatch.company_name)}</p>
+              </div>
+              <div>
+                <span class="tag tag--checkout">Gift / Kit Dispatched</span>
+              </div>
+            </div>
+
+            <div class="details-list" style="margin-bottom: 20px;">
+              <div class="detail-item">
+                <span class="detail-label">Check-In Status</span>
+                <span class="detail-value" style="color:var(--green-dark); font-weight:600;">${alreadyCheckedIn ? `🟢 Checked In (${checkInInfo.check_in_date})` : '🟡 Not Checked In'}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Checkout Status</span>
+                <span class="detail-value" style="color:var(--terracotta-dark); font-weight:700;">📤 CHECKOUT COMPLETED</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Check-in Time</span>
+                <span class="detail-value">${checkInInfo ? checkInInfo.check_in_time : 'N/A'}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Checkout Time</span>
+                <span class="detail-value" style="font-weight:700; color:var(--terracotta-dark);">${checkOutInfo.check_out_time}</span>
+              </div>
+            </div>
+
+            <div class="already-checked-box" style="background:var(--terracotta-tint); border:1px solid var(--border); color:var(--terracotta-dark); margin-bottom:16px;">
+              <div class="already-checked-icon">📤</div>
+              <div class="already-checked-text">
+                <h4>Already Completed Checkout</h4>
+                <p><strong>${escapeHTML(exactMatch.full_name)}</strong> completed checkout at <strong>${checkOutInfo.check_out_time}</strong> on <strong>${checkOutInfo.check_out_date}</strong>. Duplicate gift collection is prevented.</p>
+              </div>
+            </div>
+
+            <div class="checkin-action-wrap">
+              <button type="button" class="btn-checkout btn-checkout--done" disabled>
+                ✓ CHECKOUT RECORDED
+              </button>
+            </div>
+          </div>
+        `;
+      } else if (!alreadyCheckedIn) {
+        // CASE: NOT CHECKED IN YET (CHECKOUT BLOCKED)
+        container.innerHTML = `
+          <div class="state-card state-card--verified-pending" style="border-left: 4px solid var(--amber);">
+            <div class="state-header">
+              <span class="state-badge state-badge--yellow">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                ⚠️ CHECK-IN REQUIRED BEFORE CHECKOUT
+              </span>
+              <span class="tag tag--yellow">${escapeHTML(exactMatch.role || 'Delegate')}</span>
+            </div>
+
+            <div class="guest-profile-grid">
+              <div class="guest-main">
+                <h3 class="guest-name">${escapeHTML(exactMatch.full_name)}</h3>
+                <p class="guest-desig">${escapeHTML(exactMatch.designation || 'HR Professional')}</p>
+                <p class="guest-company">🏢 ${escapeHTML(exactMatch.company_name)}</p>
+              </div>
+            </div>
+
+            <div class="details-list">
+              <div class="detail-item">
+                <span class="detail-label">Check-In Status</span>
+                <span class="detail-value" style="color:var(--amber); font-weight:700;">🟡 Not Checked In</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Checkout Status</span>
+                <span class="detail-value" style="color:var(--ink-muted); font-weight:600;">⚪ Blocked (Check-in Required)</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Email Address</span>
+                <span class="detail-value">${escapeHTML(exactMatch.email || 'N/A')}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Mobile Number</span>
+                <span class="detail-value">${escapeHTML(exactMatch.mobile_number || 'N/A')}</span>
+              </div>
+            </div>
+
+            <div class="already-checked-box" style="background:#fffbeb; border:1px solid #fde68a; color:#92400e; margin-top:16px; margin-bottom:16px;">
+              <div class="already-checked-icon">⚠️</div>
+              <div class="already-checked-text">
+                <h4>Check-In Required First</h4>
+                <p><strong>${escapeHTML(exactMatch.full_name)}</strong> has not completed entry check-in yet. Checkout and gift receipt are only available for checked-in delegates.</p>
+              </div>
+            </div>
+
+            <div class="checkin-action-wrap">
+              <button type="button" class="btn-checkin" onclick="switchDeskMode('checkin'); executeSearch('${escapeJS(exactMatch.full_name)}');">
+                SWITCH TO CHECK-IN &amp; RECORD ENTRY &rarr;
+              </button>
+            </div>
+          </div>
+        `;
+      } else {
+        // CASE: READY FOR CHECKOUT (PRIMARY ACTION BUTTON)
+        container.innerHTML = `
+          <div class="state-card state-card--checkout-pending">
+            <div class="state-header">
+              <span class="state-badge state-badge--purple">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                CHECK-OUT VERIFICATION
+              </span>
+              <span class="tag tag--accent">${escapeHTML(exactMatch.role || 'Delegate')}</span>
+            </div>
+
+            <div class="guest-profile-grid">
+              <div class="guest-main">
+                <h3 class="guest-name">${escapeHTML(exactMatch.full_name)}</h3>
+                <p class="guest-desig">${escapeHTML(exactMatch.designation || 'HR Professional')}</p>
+                <p class="guest-company">🏢 ${escapeHTML(exactMatch.company_name)}</p>
+              </div>
+            </div>
+
+            <div class="details-list">
+              <div class="detail-item">
+                <span class="detail-label">Check-In Status</span>
+                <span class="detail-value" style="color:var(--green-dark); font-weight:600;">${alreadyCheckedIn ? `🟢 Checked In (${checkInInfo.check_in_date})` : '🟡 Not Checked In'}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Checkout Status</span>
+                <span class="detail-value" style="color:var(--ink-muted); font-weight:600;">⚪ Pending Checkout</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Check-in Time</span>
+                <span class="detail-value">${checkInInfo ? checkInInfo.check_in_time : 'N/A'}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Checkout Time</span>
+                <span class="detail-value" style="color:var(--ink-faint);">Pending</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Email Address</span>
+                <span class="detail-value">${escapeHTML(exactMatch.email || 'N/A')}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Mobile Number</span>
+                <span class="detail-value">${escapeHTML(exactMatch.mobile_number || 'N/A')}</span>
+              </div>
+            </div>
+
+            <div class="checkin-action-wrap" id="checkout-action-${exactMatch.id}">
+              <button type="button" class="btn-checkout" onclick="processCheckOut(${exactMatch.id})">
+                CHECK OUT
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              </button>
+            </div>
+          </div>
+        `;
+      }
+      return;
+    }
+
+    // CHECK-IN MODE RESULTS
     if (alreadyCheckedIn) {
       // CASE A: CHECKED IN (GREEN CARD)
       container.innerHTML = `
@@ -455,18 +745,26 @@ function renderSearchResults(result) {
   if (possibleMatches && possibleMatches.length > 0) {
     // CASE B (MULTIPLE MATCHES / COMPANY SEARCH)
     const checkIns = (adminCachedCheckIns && adminCachedCheckIns.length > 0) ? adminCachedCheckIns : getLocalCheckIns();
+    const checkOuts = (adminCachedCheckOuts && adminCachedCheckOuts.length > 0) ? adminCachedCheckOuts : getLocalCheckOuts();
 
     const listHTML = possibleMatches.map(g => {
-      const guestCheckIns = checkIns.filter(c => c.hr_guest_id === g.id);
+      const gId = parseInt(g.id, 10);
+      const guestCheckIns = checkIns.filter(c => parseInt(c.hr_guest_id, 10) === gId);
       const checkInfo = guestCheckIns[0] || null;
       const isCheckedIn = !!checkInfo;
+
+      const guestCheckOuts = checkOuts.filter(c => parseInt(c.hr_guest_id, 10) === gId);
+      const checkOutInfo = guestCheckOuts[0] || null;
+      const isCheckedOut = !!checkOutInfo;
 
       return `
         <div class="possible-item ${isCheckedIn ? 'possible-item--checked' : ''}">
           <div class="possible-info">
             <div class="possible-title-line">
               <h4>${escapeHTML(g.full_name)}</h4>
-              ${isCheckedIn ? 
+              ${isCheckedOut ?
+                `<span class="tag tag--checkout">📤 Checked Out (${escapeHTML(checkOutInfo.check_out_date)})</span>` :
+                isCheckedIn ? 
                 `<span class="tag tag--green">🟢 Checked In (${escapeHTML(checkInfo.check_in_date)})</span>` : 
                 `<span class="tag tag--yellow">🟡 Verified (Not Checked In)</span>`
               }
@@ -475,11 +773,21 @@ function renderSearchResults(result) {
             <p style="font-size:0.78rem; opacity:0.8; margin-top:2px;">Email: ${escapeHTML(g.email || 'N/A')} &middot; Mobile: ${escapeHTML(g.mobile_number || 'N/A')}</p>
           </div>
           <div class="possible-actions">
-            ${!isCheckedIn ? `
-              <button type="button" class="btn-checkin-sm" onclick="processCheckIn(${g.id})">
-                ✓ Check In
-              </button>
-            ` : ''}
+            ${currentDeskMode === 'checkout' ? (
+              isCheckedOut ? 
+                `<span class="tag tag--checkout">✓ Checked Out</span>` :
+                !isCheckedIn ?
+                `<span class="tag tag--yellow" style="font-size:0.75rem;">⚠️ Check-In Required</span>` :
+                `<button type="button" class="btn-checkout-sm" onclick="processCheckOut(${g.id})">
+                  Check Out
+                </button>`
+            ) : (
+              !isCheckedIn ? `
+                <button type="button" class="btn-checkin-sm" onclick="processCheckIn(${g.id})">
+                  ✓ Check In
+                </button>
+              ` : ''
+            )}
             <button type="button" class="btn-select-possible" onclick="selectPossibleGuest('${escapeJS(g.full_name)}')">
               View &rarr;
             </button>
@@ -491,14 +799,14 @@ function renderSearchResults(result) {
     container.innerHTML = `
       <div class="state-card state-card--possibles">
         <div class="state-header">
-          <span class="state-badge state-badge--yellow">
+          <span class="state-badge ${currentDeskMode === 'checkout' ? 'state-badge--checkout' : 'state-badge--yellow'}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             SEARCH RESULTS (${possibleMatches.length} DELEGATES)
           </span>
-          <span class="tag tag--accent">Live Registration</span>
+          <span class="tag tag--accent">${currentDeskMode === 'checkout' ? 'Check-Out Desk' : 'Live Registration'}</span>
         </div>
         <h3 class="possibles-title">HR Delegates for "${escapeHTML(query)}"</h3>
-        <p class="possibles-sub">Browse delegates below. Click <strong>✓ Check In</strong> to record live entry instantly:</p>
+        <p class="possibles-sub">Browse delegates below. Click <strong>${currentDeskMode === 'checkout' ? 'Check Out' : '✓ Check In'}</strong> to record status instantly:</p>
 
         <div class="possibles-list">
           ${listHTML}
@@ -555,21 +863,22 @@ async function processCheckIn(hrGuestId) {
 
   let resData = null;
 
-  if (isBackendAvailable) {
-    try {
-      const res = await fetch('/api/checkin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          hr_guest_id: hrGuestId,
-          operator: 'Registration Desk',
-          check_in_date: liveDateStr
-        })
-      });
+  try {
+    const res = await fetch('/api/checkin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        hr_guest_id: hrGuestId,
+        operator: 'Registration Desk',
+        check_in_date: liveDateStr
+      })
+    });
+    if (res.ok) {
       resData = await res.json();
-    } catch (err) {
-      isBackendAvailable = false;
+      isBackendAvailable = true;
     }
+  } catch (err) {
+    console.warn('Backend checkin fetch error:', err);
   }
 
   if (!resData) {
@@ -599,6 +908,140 @@ async function processCheckIn(hrGuestId) {
     await refreshAdminData();
     populateAdminDateFilter();
   }
+}
+
+// Process Single-Click Check-Out
+async function processCheckOut(hrGuestId) {
+  const parsedId = parseInt(hrGuestId, 10);
+  const checkIns = (adminCachedCheckIns && adminCachedCheckIns.length > 0) ? adminCachedCheckIns : getLocalCheckIns();
+  const checkOuts = (adminCachedCheckOuts && adminCachedCheckOuts.length > 0) ? adminCachedCheckOuts : getLocalCheckOuts();
+
+  const isCheckedIn = checkIns.some(c => parseInt(c.hr_guest_id, 10) === parsedId);
+
+  if (!isCheckedIn) {
+    showToast(`⚠️ Checkout is only allowed for delegates who have already checked in.`, 'warning');
+    const input = document.getElementById('search-input');
+    if (input && input.value) {
+      executeSearch(input.value);
+    }
+    return;
+  }
+
+  const existingOut = checkOuts.find(c => parseInt(c.hr_guest_id, 10) === parsedId);
+  if (existingOut) {
+    showToast(`⚠️ ${existingOut.hr_name || 'Delegate'} has already completed checkout on ${existingOut.check_out_date} at ${existingOut.check_out_time}.`, 'warning');
+    const input = document.getElementById('search-input');
+    if (input && input.value) {
+      executeSearch(input.value);
+    }
+    return;
+  }
+
+  const btnWrap = document.getElementById(`checkout-action-${hrGuestId}`);
+  if (btnWrap) {
+    btnWrap.innerHTML = `<button type="button" class="btn-checkout" disabled>Recording Checkout...</button>`;
+  }
+
+  const liveDateStr = getLiveDateString();
+  let resData = null;
+
+  try {
+    const res = await fetch('/api/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        hr_guest_id: hrGuestId,
+        operator: 'Registration Desk',
+        check_out_date: liveDateStr
+      })
+    });
+    if (res.ok) {
+      resData = await res.json();
+      isBackendAvailable = true;
+    }
+  } catch (err) {
+    console.warn('Backend checkout fetch error:', err);
+  }
+
+  if (!resData) {
+    resData = processLocalCheckOut(hrGuestId, liveDateStr);
+  }
+
+  if (resData.success) {
+    if (resData.checkOutInfo) {
+      adminCachedCheckOuts.push(resData.checkOutInfo);
+      const checkOuts = getLocalCheckOuts();
+      checkOuts.push(resData.checkOutInfo);
+      saveLocalCheckOuts(checkOuts);
+    }
+    showToast(`✅ ${resData.message}`);
+    const input = document.getElementById('search-input');
+    if (input && input.value) {
+      executeSearch(input.value);
+    }
+    await refreshAdminData();
+  } else {
+    showToast(`⚠️ ${resData.message}`, 'warning');
+    const input = document.getElementById('search-input');
+    if (input && input.value) {
+      executeSearch(input.value);
+    }
+    await refreshAdminData();
+  }
+}
+
+function processLocalCheckOut(hrGuestId, targetDate = null) {
+  const parsedId = parseInt(hrGuestId, 10);
+  const guests = (adminCachedGuests && adminCachedGuests.length > 0) ? adminCachedGuests : getLocalGuests();
+  const guest = guests.find(g => g.id === parsedId) || getLocalGuests().find(g => g.id === parsedId);
+  if (!guest) return { success: false, message: 'HR guest record not found' };
+
+  const checkIns = (adminCachedCheckIns && adminCachedCheckIns.length > 0) ? adminCachedCheckIns : getLocalCheckIns();
+  const hasCheckIn = checkIns.some(c => c.hr_guest_id === guest.id);
+  if (!hasCheckIn) {
+    return {
+      success: false,
+      notCheckedIn: true,
+      message: `${guest.full_name} has not checked in yet. Checkout is only allowed for delegates who have completed check-in.`
+    };
+  }
+
+  const checkOuts = getLocalCheckOuts();
+  const dateStr = targetDate || getLiveDateString();
+  const existing = checkOuts.find(c => c.hr_guest_id === guest.id && (c.check_out_date === dateStr || (c.check_out_date || '').includes(dateStr.substring(0, 6))));
+
+  if (existing) {
+    return {
+      success: false,
+      alreadyCheckedOut: true,
+      checkOutInfo: existing,
+      message: `${guest.full_name} has already completed checkout on ${existing.check_out_date} at ${existing.check_out_time}.`
+    };
+  }
+
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+  const record = {
+    id: Date.now(),
+    hr_guest_id: guest.id,
+    hr_name: guest.full_name,
+    company_name: guest.company_name,
+    designation: guest.designation,
+    check_out_date: dateStr,
+    check_out_time: timeStr,
+    timestamp: now.toISOString(),
+    operator: 'Registration Desk'
+  };
+
+  checkOuts.push(record);
+  saveLocalCheckOuts(checkOuts);
+
+  return {
+    success: true,
+    message: `CHECKOUT RECORDED SUCCESSFULLY for ${guest.full_name} (${dateStr})`,
+    checkOutInfo: record
+  };
 }
 
 function processLocalCheckIn(hrGuestId, targetDate = null) {
@@ -745,17 +1188,18 @@ async function handleWalkinSubmit(event) {
 
   let resData = null;
 
-  if (isBackendAvailable) {
-    try {
-      const res = await fetch('/api/hr', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(hrData)
-      });
+  try {
+    const res = await fetch('/api/hr', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(hrData)
+    });
+    if (res.ok) {
       resData = await res.json();
-    } catch (err) {
-      isBackendAvailable = false;
+      isBackendAvailable = true;
     }
+  } catch (err) {
+    console.warn('Backend addHR fetch error:', err);
   }
 
   if (!resData) {
@@ -811,28 +1255,30 @@ async function refreshAdminData() {
   let stats = null;
   let guests = [];
 
-  if (isBackendAvailable) {
-    try {
-      const res = await fetch('/api/admin/dashboard');
-      if (res.ok) {
-        const data = await res.json();
-        stats = data.stats;
-        guests = data.guests || [];
-        if (data.checkIns) {
-          adminCachedCheckIns = data.checkIns;
-          saveLocalCheckIns(data.checkIns);
-        }
-        saveLocalGuests(guests);
+  try {
+    const res = await fetch('/api/admin/dashboard');
+    if (res.ok) {
+      const data = await res.json();
+      stats = data.stats;
+      guests = data.guests || [];
+      if (data.checkIns) {
+        adminCachedCheckIns = data.checkIns;
       }
-    } catch (err) {
-      isBackendAvailable = false;
+      if (data.checkOuts) {
+        adminCachedCheckOuts = data.checkOuts;
+      }
+      isBackendAvailable = true;
     }
+  } catch (err) {
+    console.warn('Backend dashboard fetch error:', err);
   }
 
   if (!stats) {
     guests = getLocalGuests();
     const checkIns = getLocalCheckIns();
+    const checkOuts = getLocalCheckOuts();
     const checkedSet = new Set(checkIns.map(c => c.hr_guest_id));
+    const checkedOutSet = new Set(checkOuts.map(c => c.hr_guest_id));
 
     let c22 = 0, c23 = 0, cBoth = 0, cPending = 0, cWalk = 0;
     for (const g of guests) {
@@ -849,6 +1295,7 @@ async function refreshAdminData() {
     stats = {
       totalHRs: guests.length,
       checkedInCount: checkedSet.size,
+      checkedOutCount: checkedOutSet.size,
       notCheckedInCount: guests.length - checkedSet.size,
       count22Aug: c22,
       count23Aug: c23,
@@ -856,6 +1303,17 @@ async function refreshAdminData() {
       countDatePending: cPending,
       countWalkIns: cWalk
     };
+  }
+
+  // CALIBRATE ACCURATE TOTAL CHECK-OUTS COUNT Across Backend & Cached Checkouts
+  const allCheckOuts = [
+    ...(stats && stats.checkOuts ? stats.checkOuts : []),
+    ...(adminCachedCheckOuts || []),
+    ...getLocalCheckOuts()
+  ];
+  const uniqueCheckedOutSet = new Set(allCheckOuts.map(c => c.hr_guest_id ? String(c.hr_guest_id) : (c.hr_id ? String(c.hr_id) : null)).filter(Boolean));
+  if (stats) {
+    stats.checkedOutCount = Math.max(stats.checkedOutCount || 0, uniqueCheckedOutSet.size);
   }
 
   // Update Stat Cards with null-safety
@@ -866,6 +1324,7 @@ async function refreshAdminData() {
 
   setElText('stat-total', stats.totalHRs);
   setElText('stat-checkedin', stats.checkedInCount);
+  setElText('stat-checkedout', stats.checkedOutCount);
   setElText('stat-pending', stats.notCheckedInCount);
   setElText('stat-aug22', stats.count22Aug);
   setElText('stat-aug23', stats.count23Aug);
@@ -876,11 +1335,16 @@ async function refreshAdminData() {
   const pct = stats.totalHRs > 0 ? Math.round((stats.checkedInCount / stats.totalHRs) * 100) : 0;
   setElText('stat-checkedin-pct', `${pct}% Attended`);
 
+  const outPct = stats.checkedInCount > 0 ? Math.round((stats.checkedOutCount / stats.checkedInCount) * 100) : (stats.totalHRs > 0 ? Math.round((stats.checkedOutCount / stats.totalHRs) * 100) : 0);
+  setElText('stat-checkedout-pct', `${outPct}% Checked Out`);
+
   adminCachedGuests = guests || [];
   populateAdminDateFilter();
   renderAdminTable(guests);
   if (currentAdminTab === 'audit') {
     renderAuditLogsTable();
+  } else if (currentAdminTab === 'checkout-audit') {
+    renderCheckoutAuditLogsTable();
   }
 }
 
@@ -973,16 +1437,16 @@ function renderAdminTable(providedGuests = null) {
 // Render Audit Logs Table
 async function renderAuditLogsTable() {
   let logs = [];
-  if (isBackendAvailable) {
-    try {
-      const res = await fetch('/api/admin/audit');
-      if (res.ok) {
-        const data = await res.json();
-        logs = data.logs;
-      }
-    } catch (err) {
-      isBackendAvailable = false;
+
+  try {
+    const res = await fetch('/api/admin/audit');
+    if (res.ok) {
+      const data = await res.json();
+      logs = data.logs || [];
+      isBackendAvailable = true;
     }
+  } catch (err) {
+    console.warn('Backend audit logs fetch error:', err);
   }
 
   if (logs.length === 0) {
@@ -1007,14 +1471,102 @@ async function renderAuditLogsTable() {
   `).join('');
 }
 
+// Render Checkout Audit Logs Table (With Filters: 22 Aug, 23 Aug, Both Days, Company, Search)
+async function renderCheckoutAuditLogsTable() {
+  let logs = [];
+
+  try {
+    const res = await fetch('/api/admin/checkout-audit');
+    if (res.ok) {
+      const data = await res.json();
+      logs = data.logs || [];
+      isBackendAvailable = true;
+    }
+  } catch (err) {
+    console.warn('Backend checkout audit logs fetch error:', err);
+  }
+
+  if (logs.length === 0) {
+    const localCheckOuts = getLocalCheckOuts();
+    const checkIns = getLocalCheckIns();
+    const checkInMap = new Map(checkIns.map(c => [c.hr_guest_id, c]));
+    logs = localCheckOuts.slice().reverse().map(co => {
+      const ci = checkInMap.get(co.hr_guest_id);
+      return {
+        ...co,
+        check_in_date: ci ? ci.check_in_date : (co.check_out_date || 'N/A'),
+        check_in_time: ci ? ci.check_in_time : 'N/A'
+      };
+    });
+  }
+
+  // Populate company filter dropdown
+  const companySelect = document.getElementById('filter-checkout-company');
+  if (companySelect) {
+    const curVal = companySelect.value;
+    const companies = Array.from(new Set(logs.map(l => l.company_name).filter(Boolean))).sort();
+    companySelect.innerHTML = `<option value="">All Companies (${companies.length})</option>` +
+      companies.map(c => `<option value="${escapeHTML(c)}">${escapeHTML(c)}</option>`).join('');
+    if (curVal) companySelect.value = curVal;
+  }
+
+  const searchInput = document.getElementById('checkout-audit-search-input');
+  const searchVal = searchInput ? normalize(searchInput.value) : '';
+  const companyVal = companySelect ? companySelect.value : '';
+  const dateSelect = document.getElementById('filter-checkout-date');
+  const dateVal = dateSelect ? dateSelect.value : '';
+
+  const filtered = logs.filter(l => {
+    if (searchVal) {
+      const text = normalize(`${l.hr_name} ${l.company_name} ${l.designation}`);
+      if (!text.includes(searchVal)) return false;
+    }
+    if (companyVal && l.company_name !== companyVal) return false;
+    if (dateVal && dateVal.trim() !== '') {
+      const coDate = (l.check_out_date || '').toLowerCase();
+      const ciDate = (l.check_in_date || '').toLowerCase();
+      const target = dateVal.toLowerCase();
+      if (target === 'both') {
+        // match both
+      } else {
+        if (!coDate.includes(target) && !ciDate.includes(target)) return false;
+      }
+    }
+    return true;
+  });
+
+  const tbody = document.getElementById('checkout-audit-table-body');
+  if (!tbody) return;
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:30px; color:var(--ink-faint);">No checkout audit records found matching selected filters.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(l => `
+    <tr>
+      <td><strong>${escapeHTML(l.hr_name)}</strong></td>
+      <td>🏢 ${escapeHTML(l.company_name)}</td>
+      <td>${escapeHTML(l.designation || 'HR Professional')}</td>
+      <td><span class="tag tag--green">${escapeHTML(l.check_in_date || 'N/A')} &middot; ${escapeHTML(l.check_in_time || 'N/A')}</span></td>
+      <td><span class="tag tag--checkout">${escapeHTML(l.check_out_date || '')} &middot; ${escapeHTML(l.check_out_time || '')}</span></td>
+      <td><span class="tag tag--checkout" style="font-weight:700;">📤 CHECKOUT COMPLETED</span></td>
+    </tr>
+  `).join('');
+}
+
 // --- Guest Info Modal ---
 function openGuestInfoModal(hrId) {
+  const parsedId = parseInt(hrId, 10);
   const guests = (adminCachedGuests && adminCachedGuests.length > 0) ? adminCachedGuests : getLocalGuests();
   const checkIns = (adminCachedCheckIns && adminCachedCheckIns.length > 0) ? adminCachedCheckIns : getLocalCheckIns();
-  const g = guests.find(item => item.id === parseInt(hrId, 10));
+  const checkOuts = (adminCachedCheckOuts && adminCachedCheckOuts.length > 0) ? adminCachedCheckOuts : getLocalCheckOuts();
+
+  const g = guests.find(item => parseInt(item.id, 10) === parsedId);
   if (!g) return;
 
-  const c = checkIns.find(ci => ci.hr_guest_id === g.id);
+  const c = checkIns.find(ci => parseInt(ci.hr_guest_id, 10) === parsedId);
+  const co = checkOuts.find(co => parseInt(co.hr_guest_id, 10) === parsedId);
 
   const body = document.getElementById('guest-info-body');
   const foot = document.getElementById('guest-info-foot');
@@ -1027,8 +1579,10 @@ function openGuestInfoModal(hrId) {
           <p class="guest-desig" style="color: var(--ink-muted); font-size: 0.95rem; margin-top: 2px;">${escapeHTML(g.designation || 'HR Professional')}</p>
           <p class="guest-company" style="font-weight: 600; margin-top: 6px; font-size: 1rem;">🏢 ${escapeHTML(g.company_name)}</p>
         </div>
-        <div>
-          ${c ? `<span class="tag tag--green" style="font-size:0.82rem; padding: 5px 14px;">Checked In</span>` : `<span class="tag tag--yellow" style="font-size:0.82rem; padding: 5px 14px;">Not Checked In</span>`}
+        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
+          ${co ? `<span class="tag tag--checkout" style="font-size:0.82rem; padding: 5px 14px; font-weight:700;">📤 Checkout Completed</span>` :
+            c ? `<span class="tag tag--green" style="font-size:0.82rem; padding: 5px 14px;">🟢 Checked In</span>` :
+            `<span class="tag tag--yellow" style="font-size:0.82rem; padding: 5px 14px;">🟡 Not Checked In</span>`}
         </div>
       </div>
 
@@ -1052,7 +1606,12 @@ function openGuestInfoModal(hrId) {
         ${c ? `
         <div class="detail-item" style="grid-column: span 2; background: var(--green-tint); padding: 12px 16px; border-radius: var(--radius-sm); border: 1px solid var(--green-border);">
           <span class="detail-label" style="font-size:0.72rem; color:var(--green-dark); text-transform:uppercase; font-weight:700; letter-spacing:0.04em;">Check-in Status</span>
-          <div class="detail-value" style="font-weight:600; color:var(--green-dark); margin-top:3px;">Checked in on ${c.check_in_date} at ${c.check_in_time} (Operator: ${escapeHTML(c.operator || 'Desk')})</div>
+          <div class="detail-value" style="font-weight:600; color:var(--green-dark); margin-top:3px;">Checked in on ${escapeHTML(c.check_in_date)} at ${escapeHTML(c.check_in_time)} (Operator: ${escapeHTML(c.operator || 'Desk')})</div>
+        </div>` : ''}
+        ${co ? `
+        <div class="detail-item" style="grid-column: span 2; background: var(--terracotta-tint); padding: 12px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+          <span class="detail-label" style="font-size:0.72rem; color:var(--terracotta-dark); text-transform:uppercase; font-weight:700; letter-spacing:0.04em;">Checkout Status</span>
+          <div class="detail-value" style="font-weight:700; color:var(--terracotta-dark); margin-top:3px;">📤 Checkout Completed on ${escapeHTML(co.check_out_date)} at ${escapeHTML(co.check_out_time)} (Operator: ${escapeHTML(co.operator || 'Desk')})</div>
         </div>` : ''}
         ${g.remarks ? `
         <div class="detail-item" style="grid-column: span 2;">
@@ -1066,7 +1625,19 @@ function openGuestInfoModal(hrId) {
   if (foot) {
     foot.innerHTML = `
       <button type="button" class="btn btn-secondary" onclick="closeGuestInfoModal()">Close</button>
-      ${!c ? `<button type="button" class="btn btn-primary" onclick="closeGuestInfoModal(); promptCheckIn(${g.id});">Check In Now</button>` : ''}
+      ${co ? `
+        <button type="button" class="btn btn-secondary" disabled style="opacity:0.9; cursor:not-allowed; background:var(--terracotta-tint); color:var(--terracotta-dark); border:1px solid var(--border);">
+          ✓ Checkout Completed
+        </button>
+      ` : c ? `
+        <button type="button" class="btn btn-primary" style="background:var(--terracotta);" onclick="closeGuestInfoModal(); processCheckOut(${g.id});">
+          Check Out Now &rarr;
+        </button>
+      ` : `
+        <button type="button" class="btn btn-primary" onclick="closeGuestInfoModal(); promptCheckIn(${g.id});">
+          Check In Now &rarr;
+        </button>
+      `}
       <button type="button" class="btn btn-secondary" onclick="closeGuestInfoModal(); openEditModal(${g.id});">Edit Profile</button>
     `;
   }
@@ -1183,15 +1754,73 @@ async function deleteHR(hrId) {
 let pendingImportRecords = [];
 
 function openImportModal() {
+  resetCSVUpload();
   document.getElementById('modal-import').classList.add('active');
-  document.getElementById('import-preview').style.display = 'none';
-  document.getElementById('btn-confirm-import').disabled = true;
-  pendingImportRecords = [];
+}
+
+// Download Sample CSV Import Template
+function downloadCSVTemplate() {
+  const headers = ['Full Name', 'Designation', 'Company', 'Email', 'Mobile', 'Address', 'Role', 'Attendance Date', 'Invited By', 'Remarks'];
+  const sampleRow1 = [
+    '"Rajesh Sharma"',
+    '"Senior HR Director"',
+    '"TechCorp India"',
+    '"rajesh.sharma@example.com"',
+    '"9876543210"',
+    '"Mumbai, Maharashtra"',
+    '"Delegate"',
+    '"22 Aug 2026"',
+    '"MIT Summit Team"',
+    '"Sample HR Record"'
+  ];
+  const sampleRow2 = [
+    '"Priya Patel"',
+    '"Head of Talent Acquisition"',
+    '"Infosys Ltd"',
+    '"priya.patel@example.com"',
+    '"9812345678"',
+    '"Pune, Maharashtra"',
+    '"Speaker"',
+    '"23 Aug 2026"',
+    '"Registration Desk"',
+    '"Sample Walk-in HR"'
+  ];
+
+  const csvContent = [headers.join(','), sampleRow1.join(','), sampleRow2.join(',')].join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', 'HR_Summit_Import_Template.csv');
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
 function closeImportModal() {
   document.getElementById('modal-import').classList.remove('active');
-  document.getElementById('file-input').value = '';
+  resetCSVUpload();
+}
+
+function resetCSVUpload() {
+  const fileInput = document.getElementById('file-input');
+  if (fileInput) fileInput.value = '';
+
+  const uploadZone = document.getElementById('upload-zone');
+  if (uploadZone) uploadZone.style.display = 'block';
+
+  const summaryBox = document.getElementById('upload-status-summary');
+  if (summaryBox) summaryBox.style.display = 'none';
+
+  const previewBox = document.getElementById('import-preview');
+  if (previewBox) previewBox.style.display = 'none';
+
+  pendingImportRecords = [];
+  const confirmBtn = document.getElementById('btn-confirm-import');
+  if (confirmBtn) {
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Confirm & Import Records';
+  }
 }
 
 function handleFileSelect(event) {
@@ -1213,7 +1842,7 @@ function handleFileSelect(event) {
         const firstSheetName = workbook.SheetNames[0];
         const sheet = workbook.Sheets[firstSheetName];
         const rowsJson = XLSX.utils.sheet_to_json(sheet);
-        processParsedRows(rowsJson);
+        processParsedRows(rowsJson, file.name);
       } catch (err) {
         console.error('XLSX Read Error:', err);
         showToast(`⚠️ Error reading Excel file: ${err.message}`, 'warning');
@@ -1223,13 +1852,13 @@ function handleFileSelect(event) {
   } else {
     reader.onload = (e) => {
       const content = e.target.result;
-      parseCSVContent(content);
+      parseCSVContent(content, file.name);
     };
     reader.readAsText(file);
   }
 }
 
-function processParsedRows(rowsJson) {
+function processParsedRows(rowsJson, fileName = 'Uploaded File') {
   if (!Array.isArray(rowsJson) || rowsJson.length === 0) {
     showToast('⚠️ Uploaded file contains no data rows', 'warning');
     return;
@@ -1274,7 +1903,7 @@ function processParsedRows(rowsJson) {
     return;
   }
 
-  validateAndPreviewImport(records);
+  validateAndPreviewImport(records, fileName);
 }
 
 // RFC 4180 Compliant CSV Line Parser (Handles quotes, internal commas, escaped quotes)
@@ -1302,7 +1931,7 @@ function parseCSVLine(line) {
   return result;
 }
 
-function parseCSVContent(csvText) {
+function parseCSVContent(csvText, fileName = 'HR_Data.csv') {
   if (!csvText) {
     showToast('⚠️ File is empty', 'warning');
     return;
@@ -1387,10 +2016,10 @@ function parseCSVContent(csvText) {
     return;
   }
 
-  validateAndPreviewImport(records);
+  validateAndPreviewImport(records, fileName);
 }
 
-function validateAndPreviewImport(records) {
+function validateAndPreviewImport(records, fileName = 'HR_Data.csv') {
   const currentList = (adminCachedGuests && adminCachedGuests.length > 0) ? adminCachedGuests : getLocalGuests();
   
   const normKey = (str) => (str || '').toString().toLowerCase().trim().replace(/[^a-z0-9]/g, '');
@@ -1452,6 +2081,17 @@ function validateAndPreviewImport(records) {
     `;
     previewBody.appendChild(tr);
   });
+
+  // HIDE DRAG AND DROP ZONE & SHOW SUCCESS SUMMARY
+  const uploadZone = document.getElementById('upload-zone');
+  const summaryBox = document.getElementById('upload-status-summary');
+  const filenameEl = document.getElementById('upload-filename-display');
+  const countEl = document.getElementById('upload-count-display');
+
+  if (uploadZone) uploadZone.style.display = 'none';
+  if (summaryBox) summaryBox.style.display = 'flex';
+  if (filenameEl) filenameEl.textContent = `✓ ${fileName} uploaded successfully`;
+  if (countEl) countEl.textContent = `${validCount} records ready to import (${dupCount} duplicates skipped)`;
 
   document.getElementById('prev-count-valid').textContent = `${validCount} Valid Records`;
   document.getElementById('prev-count-dup').textContent = `${dupCount} Duplicates Skipped`;

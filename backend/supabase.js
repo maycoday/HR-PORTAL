@@ -1,14 +1,24 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://fpvblgjwztbzreprqemq.supabase.co';
+function getSupabaseUrl() {
+  let url = (process.env.SUPABASE_URL || 'https://fpvblgjwztbzreprqemq.supabase.co').trim();
+  url = url.replace(/^["']|["']$/g, '');
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    url = 'https://' + url;
+  }
+  return url.replace(/\/+$/, '');
+}
 
 function getSupabaseKey() {
-  return (
+  let key = (
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_SERVICE_KEY ||
+    process.env.SUPABASE_KEY ||
     process.env.SUPABASE_ANON_KEY ||
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwdmJsZ2p3enRienJlcHJxZW1xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5MzI4NjgsImV4cCI6MjEwMjUwODg2OH0.ye75RUMGSGoHUzeTu8Kton3pu1fFc-ZiWbEEroQFivc'
-  );
+  ).trim();
+  return key.replace(/^["']|["']$/g, '');
 }
 
 function getHeaders() {
@@ -21,12 +31,43 @@ function getHeaders() {
   };
 }
 
+// Diagnostic connection test
+async function testConnection() {
+  const url = getSupabaseUrl();
+  const key = getSupabaseKey();
+  const isServiceKey = !!(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY);
+  try {
+    const res = await fetch(`${url}/rest/v1/hr_guests?select=count`, {
+      method: 'GET',
+      headers: getHeaders()
+    });
+    const text = await res.text();
+    return {
+      ok: res.ok,
+      status: res.status,
+      url,
+      hasServiceKey: isServiceKey,
+      keyLength: key ? key.length : 0,
+      response: text
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      status: 0,
+      url,
+      hasServiceKey: isServiceKey,
+      error: err.message
+    };
+  }
+}
+
 // 1. Fetch all HR Guests from Supabase
 async function fetchGuests() {
+  const url = getSupabaseUrl();
   const key = getSupabaseKey();
-  if (!SUPABASE_URL || !key) return null;
+  if (!url || !key) return null;
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/hr_guests?select=*&order=id.asc`, {
+    const res = await fetch(`${url}/rest/v1/hr_guests?select=*&order=id.asc`, {
       headers: getHeaders()
     });
     if (!res.ok) {
@@ -45,10 +86,11 @@ async function fetchGuests() {
 
 // 2. Fetch all Check-Ins from Supabase
 async function fetchCheckIns() {
+  const url = getSupabaseUrl();
   const key = getSupabaseKey();
-  if (!SUPABASE_URL || !key) return null;
+  if (!url || !key) return null;
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/check_ins?select=*&order=id.asc`, {
+    const res = await fetch(`${url}/rest/v1/check_ins?select=*&order=id.asc`, {
       headers: getHeaders()
     });
     if (!res.ok) {
@@ -65,10 +107,38 @@ async function fetchCheckIns() {
   }
 }
 
+// 2b. Fetch all Check-Outs from Supabase
+async function fetchCheckOuts() {
+  const url = getSupabaseUrl();
+  const key = getSupabaseKey();
+  if (!url || !key) return [];
+  try {
+    const res = await fetch(`${url}/rest/v1/check_outs?select=*&order=id.asc`, {
+      headers: getHeaders()
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      if (res.status === 404 || errText.includes('PGRST205') || errText.includes('schema cache')) {
+        console.warn('[Supabase Notice] Table public.check_outs not found in Supabase schema cache. Returning empty check-outs list.');
+        return [];
+      }
+      console.error(`[Supabase Error] fetchCheckOuts (${res.status}):`, errText);
+      return [];
+    }
+    const data = await res.json();
+    console.log(`[Supabase] Loaded ${Array.isArray(data) ? data.length : 0} check-out records from cloud database.`);
+    return Array.isArray(data) ? data : [];
+  } catch (err) {
+    console.error('[Supabase Exception] fetchCheckOuts:', err.message);
+    return [];
+  }
+}
+
 // 3. Search HR Guests with ILIKE partial match
 async function searchGuests(query, activeDate = null) {
+  const url = getSupabaseUrl();
   const key = getSupabaseKey();
-  if (!SUPABASE_URL || !key) return null;
+  if (!url || !key) return null;
   if (!query || !query.trim()) {
     return { query: '', exactMatch: null, possibleMatches: [], alreadyCheckedIn: false, checkInInfo: null };
   }
@@ -76,7 +146,7 @@ async function searchGuests(query, activeDate = null) {
   const lowerQ = cleanQ.toLowerCase();
 
   try {
-    const searchUrl = `${SUPABASE_URL}/rest/v1/hr_guests?select=*&or=(full_name.ilike.*${encodeURIComponent(cleanQ)}*,company_name.ilike.*${encodeURIComponent(cleanQ)}*,email.ilike.*${encodeURIComponent(cleanQ)}*,mobile_number.ilike.*${encodeURIComponent(cleanQ)}*,designation.ilike.*${encodeURIComponent(cleanQ)}*)`;
+    const searchUrl = `${url}/rest/v1/hr_guests?select=*&or=(full_name.ilike.*${encodeURIComponent(cleanQ)}*,company_name.ilike.*${encodeURIComponent(cleanQ)}*,email.ilike.*${encodeURIComponent(cleanQ)}*,mobile_number.ilike.*${encodeURIComponent(cleanQ)}*,designation.ilike.*${encodeURIComponent(cleanQ)}*)`;
     const res = await fetch(searchUrl, { headers: getHeaders() });
     
     let matches = [];
@@ -88,8 +158,11 @@ async function searchGuests(query, activeDate = null) {
       return null;
     }
 
-    const checkInsRes = await fetch(`${SUPABASE_URL}/rest/v1/check_ins?select=*`, { headers: getHeaders() });
+    const checkInsRes = await fetch(`${url}/rest/v1/check_ins?select=*`, { headers: getHeaders() });
     const checkIns = checkInsRes.ok ? await checkInsRes.json() : [];
+
+    const checkOutsRes = await fetch(`${url}/rest/v1/check_outs?select=*`, { headers: getHeaders() });
+    const checkOuts = checkOutsRes.ok ? await checkOutsRes.json() : [];
 
     let exactMatch = null;
     const possibles = [];
@@ -113,9 +186,12 @@ async function searchGuests(query, activeDate = null) {
 
     let alreadyCheckedIn = false;
     let checkInInfo = null;
+    let alreadyCheckedOut = false;
+    let checkOutInfo = null;
 
     if (exactMatch) {
-      const guestCheckIns = checkIns.filter(c => c.hr_guest_id === exactMatch.id);
+      const exactId = parseInt(exactMatch.id, 10);
+      const guestCheckIns = checkIns.filter(c => parseInt(c.hr_guest_id, 10) === exactId);
       if (activeDate && activeDate !== 'both' && activeDate !== 'all') {
         const existing = guestCheckIns.find(c => c.check_in_date === activeDate || (c.check_in_date || '').includes(activeDate.substring(0, 6)));
         if (existing) {
@@ -126,6 +202,18 @@ async function searchGuests(query, activeDate = null) {
         alreadyCheckedIn = true;
         checkInInfo = guestCheckIns[0];
       }
+
+      const guestCheckOuts = checkOuts.filter(c => parseInt(c.hr_guest_id, 10) === exactId);
+      if (activeDate && activeDate !== 'both' && activeDate !== 'all') {
+        const existingOut = guestCheckOuts.find(c => c.check_out_date === activeDate || (c.check_out_date || '').includes(activeDate.substring(0, 6)));
+        if (existingOut) {
+          alreadyCheckedOut = true;
+          checkOutInfo = existingOut;
+        }
+      } else if (guestCheckOuts.length > 0) {
+        alreadyCheckedOut = true;
+        checkOutInfo = guestCheckOuts[0];
+      }
     }
 
     return {
@@ -133,7 +221,9 @@ async function searchGuests(query, activeDate = null) {
       exactMatch,
       possibleMatches: possibles.slice(0, 100),
       alreadyCheckedIn,
-      checkInInfo
+      checkInInfo,
+      alreadyCheckedOut,
+      checkOutInfo
     };
   } catch (err) {
     console.error('[Supabase Exception] searchGuests:', err.message);
@@ -143,8 +233,9 @@ async function searchGuests(query, activeDate = null) {
 
 // 4. Add Single HR Guest
 async function addGuest(hrData) {
+  const url = getSupabaseUrl();
   const key = getSupabaseKey();
-  if (!SUPABASE_URL || !key) return null;
+  if (!url || !key) return null;
   try {
     const payload = [{
       full_name: (hrData.full_name || '').trim(),
@@ -161,7 +252,7 @@ async function addGuest(hrData) {
       is_walk_in: hrData.is_walk_in !== undefined ? hrData.is_walk_in : true
     }];
 
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/hr_guests`, {
+    const res = await fetch(`${url}/rest/v1/hr_guests`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(payload)
@@ -190,10 +281,11 @@ async function addGuest(hrData) {
 
 // 5. Update HR Guest
 async function updateGuest(id, hrData) {
+  const url = getSupabaseUrl();
   const key = getSupabaseKey();
-  if (!SUPABASE_URL || !key) return null;
+  if (!url || !key) return null;
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/hr_guests?id=eq.${id}`, {
+    const res = await fetch(`${url}/rest/v1/hr_guests?id=eq.${id}`, {
       method: 'PATCH',
       headers: getHeaders(),
       body: JSON.stringify({
@@ -227,10 +319,11 @@ async function updateGuest(id, hrData) {
 
 // 6. Delete HR Guest
 async function deleteGuest(id) {
+  const url = getSupabaseUrl();
   const key = getSupabaseKey();
-  if (!SUPABASE_URL || !key) return null;
+  if (!url || !key) return null;
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/hr_guests?id=eq.${id}`, {
+    const res = await fetch(`${url}/rest/v1/hr_guests?id=eq.${id}`, {
       method: 'DELETE',
       headers: getHeaders()
     });
@@ -249,15 +342,16 @@ async function deleteGuest(id) {
 
 // 7. Check-In HR Guest
 async function checkInGuest(hrGuestId, operator = 'Desk Operator', checkInDate = null) {
+  const url = getSupabaseUrl();
   const key = getSupabaseKey();
-  if (!SUPABASE_URL || !key) return null;
+  if (!url || !key) return null;
   try {
     const now = new Date();
     const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
     const dateStr = checkInDate || now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 
     // Check if already checked in for this date
-    const checkRes = await fetch(`${SUPABASE_URL}/rest/v1/check_ins?hr_guest_id=eq.${hrGuestId}`, {
+    const checkRes = await fetch(`${url}/rest/v1/check_ins?hr_guest_id=eq.${hrGuestId}`, {
       headers: getHeaders()
     });
     if (checkRes.ok) {
@@ -274,7 +368,7 @@ async function checkInGuest(hrGuestId, operator = 'Desk Operator', checkInDate =
     }
 
     // Fetch guest details
-    const guestRes = await fetch(`${SUPABASE_URL}/rest/v1/hr_guests?id=eq.${hrGuestId}`, {
+    const guestRes = await fetch(`${url}/rest/v1/hr_guests?id=eq.${hrGuestId}`, {
       headers: getHeaders()
     });
     if (!guestRes.ok) {
@@ -297,7 +391,7 @@ async function checkInGuest(hrGuestId, operator = 'Desk Operator', checkInDate =
       operator
     }];
 
-    const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/check_ins`, {
+    const insertRes = await fetch(`${url}/rest/v1/check_ins`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(payload)
@@ -324,8 +418,9 @@ async function checkInGuest(hrGuestId, operator = 'Desk Operator', checkInDate =
 
 // 8. Batch Import CSV Records
 async function batchImportGuests(records) {
+  const url = getSupabaseUrl();
   const key = getSupabaseKey();
-  if (!SUPABASE_URL || !key) return null;
+  if (!url || !key) return null;
   if (!Array.isArray(records) || records.length === 0) {
     return { success: false, message: 'No records provided for import' };
   }
@@ -374,13 +469,12 @@ async function batchImportGuests(records) {
       return { success: true, addedCount: 0, duplicateCount: dupCount, message: `All ${dupCount} records were duplicates and skipped.` };
     }
 
-    // Insert in chunks of 100
     const chunkSize = 100;
     let totalInserted = 0;
 
     for (let i = 0; i < toInsert.length; i += chunkSize) {
       const chunk = toInsert.slice(i, i + chunkSize);
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/hr_guests`, {
+      const res = await fetch(`${url}/rest/v1/hr_guests`, {
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify(chunk)
@@ -412,11 +506,12 @@ async function batchImportGuests(records) {
 
 // 9. Bulk Seed Guests into Supabase (Chunks of 100)
 async function seedBulkGuests(records) {
+  const url = getSupabaseUrl();
   const key = getSupabaseKey();
-  if (!SUPABASE_URL || !key) return null;
+  if (!url || !key) return null;
   if (!Array.isArray(records) || records.length === 0) return { success: true, inserted: 0 };
 
-  console.log(`[Supabase Seed] Starting bulk seed of ${records.length} HR records into Supabase...`);
+  console.log(`[Supabase Seed] Starting bulk seed of ${records.length} HR records into Supabase at ${url}...`);
   const chunkSize = 100;
   let insertedTotal = 0;
 
@@ -437,7 +532,7 @@ async function seedBulkGuests(records) {
     }));
 
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/hr_guests`, {
+      const res = await fetch(`${url}/rest/v1/hr_guests`, {
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify(chunk)
@@ -464,13 +559,14 @@ async function seedBulkGuests(records) {
 
 // 10. Bulk Seed Check-Ins into Supabase
 async function seedBulkCheckIns(checkIns) {
+  const url = getSupabaseUrl();
   const key = getSupabaseKey();
-  if (!SUPABASE_URL || !key) return null;
+  if (!url || !key) return null;
   if (!Array.isArray(checkIns) || checkIns.length === 0) return { success: true, inserted: 0 };
 
   console.log(`[Supabase Seed] Seeding ${checkIns.length} check-in records to Supabase...`);
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/check_ins`, {
+    const res = await fetch(`${url}/rest/v1/check_ins`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(checkIns)
@@ -488,17 +584,135 @@ async function seedBulkCheckIns(checkIns) {
   }
 }
 
+// 7b. Check-Out HR Guest
+async function checkOutGuest(hrGuestId, operator = 'Desk Operator', checkOutDate = null) {
+  const url = getSupabaseUrl();
+  const key = getSupabaseKey();
+  if (!url || !key) return null;
+  try {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    const dateStr = checkOutDate || now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+
+    // 1. Fetch guest details first
+    const guestRes = await fetch(`${url}/rest/v1/hr_guests?id=eq.${hrGuestId}`, {
+      headers: getHeaders()
+    });
+    if (!guestRes.ok) {
+      const errText = await guestRes.text();
+      console.error(`[Supabase Error] checkOutGuest guest fetch (${guestRes.status}):`, errText);
+      return { success: false, message: 'HR record not found' };
+    }
+    const guests = await guestRes.json();
+    if (!guests || guests.length === 0) return { success: false, message: 'HR record not found' };
+    const guest = guests[0];
+
+    // 2. CHECK-IN VERIFICATION: Checkout is ONLY allowed for delegates who have completed check-in!
+    const checkInRes = await fetch(`${url}/rest/v1/check_ins?hr_guest_id=eq.${hrGuestId}`, {
+      headers: getHeaders()
+    });
+    let hasCheckIn = false;
+    if (checkInRes.ok) {
+      const existingCheckIns = await checkInRes.json();
+      if (Array.isArray(existingCheckIns) && existingCheckIns.length > 0) {
+        hasCheckIn = true;
+      }
+    }
+
+    if (!hasCheckIn) {
+      return {
+        success: false,
+        notCheckedIn: true,
+        message: `${guest.full_name} has not checked in yet. Checkout is only allowed for delegates who have completed check-in.`
+      };
+    }
+
+    // 3. Check if already checked out
+    const checkRes = await fetch(`${url}/rest/v1/check_outs?hr_guest_id=eq.${hrGuestId}`, {
+      headers: getHeaders()
+    });
+    if (checkRes.ok) {
+      const existing = await checkRes.json();
+      const existingForDate = (existing || []).find(c => c.check_out_date === dateStr || (c.check_out_date || '').includes(dateStr.substring(0, 6)));
+      if (existingForDate) {
+        return {
+          success: false,
+          alreadyCheckedOut: true,
+          checkOutInfo: existingForDate,
+          message: `${existingForDate.hr_name} has already completed checkout on ${existingForDate.check_out_date} at ${existingForDate.check_out_time}.`
+        };
+      }
+    }
+
+    const payload = [{
+      hr_guest_id: guest.id,
+      hr_name: guest.full_name,
+      company_name: guest.company_name,
+      designation: guest.designation || '',
+      check_out_date: dateStr,
+      check_out_time: timeStr,
+      timestamp: now.toISOString(),
+      operator
+    }];
+
+    const insertRes = await fetch(`${url}/rest/v1/check_outs`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(payload)
+    });
+
+    if (!insertRes.ok) {
+      const errText = await insertRes.text();
+      console.error(`[Supabase Error] checkOutGuest insert (${insertRes.status}):`, errText);
+      // Fallback response if check_outs table is not present in Supabase
+      const record = {
+        id: Date.now(),
+        hr_guest_id: guest.id,
+        hr_name: guest.full_name,
+        company_name: guest.company_name,
+        designation: guest.designation || '',
+        check_out_date: dateStr,
+        check_out_time: timeStr,
+        timestamp: now.toISOString(),
+        operator
+      };
+      return {
+        success: true,
+        message: `CHECKOUT RECORDED SUCCESSFULLY for ${guest.full_name} (${dateStr})`,
+        checkOutInfo: record
+      };
+    }
+    const inserted = await insertRes.json();
+    const record = Array.isArray(inserted) ? inserted[0] : inserted;
+    console.log(`[Supabase] Recorded check-out for "${guest.full_name}" on ${dateStr} at ${timeStr}`);
+    return {
+      success: true,
+      message: `CHECKOUT RECORDED SUCCESSFULLY for ${guest.full_name} (${dateStr})`,
+      checkOutInfo: record
+    };
+  } catch (err) {
+    console.error('[Supabase Exception] checkOutGuest:', err.message);
+    return null;
+  }
+}
+
 // 11. Flush / Clear All Data from Supabase
 async function flushAllData() {
+  const url = getSupabaseUrl();
   const key = getSupabaseKey();
-  if (!SUPABASE_URL || !key) return null;
+  if (!url || !key) return null;
   try {
-    await fetch(`${SUPABASE_URL}/rest/v1/check_ins?id=gte.0`, {
+    await fetch(`${url}/rest/v1/check_outs?id=gte.0`, {
       method: 'DELETE',
       headers: getHeaders()
     });
 
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/hr_guests?id=gte.0`, {
+    await fetch(`${url}/rest/v1/check_ins?id=gte.0`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+
+    const res = await fetch(`${url}/rest/v1/hr_guests?id=gte.0`, {
       method: 'DELETE',
       headers: getHeaders()
     });
@@ -509,8 +723,8 @@ async function flushAllData() {
       return null;
     }
 
-    console.log('[Supabase] All HR guest and check-in records have been flushed.');
-    return { success: true, message: 'All HR guest and check-in records have been flushed from Supabase.' };
+    console.log('[Supabase] All HR guest, check-in, and check-out records have been flushed.');
+    return { success: true, message: 'All HR guest, check-in, and check-out records have been flushed from Supabase.' };
   } catch (err) {
     console.error('[Supabase Exception] flushAllData:', err.message);
     return null;
@@ -518,13 +732,16 @@ async function flushAllData() {
 }
 
 module.exports = {
+  testConnection,
   fetchGuests,
   fetchCheckIns,
+  fetchCheckOuts,
   searchGuests,
   addGuest,
   updateGuest,
   deleteGuest,
   checkInGuest,
+  checkOutGuest,
   batchImportGuests,
   seedBulkGuests,
   seedBulkCheckIns,

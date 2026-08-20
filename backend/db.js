@@ -63,15 +63,22 @@ async function readCheckIns() {
   return sbCheckIns;
 }
 
+// Read Check-outs: Direct from Supabase ONLY
+async function readCheckOuts() {
+  const sbCheckOuts = await supabase.fetchCheckOuts();
+  return Array.isArray(sbCheckOuts) ? sbCheckOuts : [];
+}
+
 // Main Search Function (100% Case-Insensitive & Diacritic-Insensitive over Supabase Data)
 async function search(rawQuery, activeDate = null) {
   const query = rawQuery ? rawQuery.trim() : '';
   if (!query) {
-    return { query: '', exactMatch: null, possibleMatches: [], alreadyCheckedIn: false, checkInInfo: null };
+    return { query: '', exactMatch: null, possibleMatches: [], alreadyCheckedIn: false, checkInInfo: null, alreadyCheckedOut: false, checkOutInfo: null };
   }
 
   const guests = await readGuests();
   const checkIns = await readCheckIns();
+  const checkOuts = await readCheckOuts();
   const normQuery = normalizeText(query);
   const words = normQuery.split(' ').filter(w => w.length > 0);
 
@@ -141,9 +148,12 @@ async function search(rawQuery, activeDate = null) {
 
   let alreadyCheckedIn = false;
   let checkInInfo = null;
+  let alreadyCheckedOut = false;
+  let checkOutInfo = null;
 
   if (exactMatch) {
-    const guestCheckIns = checkIns.filter(c => c.hr_guest_id === exactMatch.id);
+    const exactId = parseInt(exactMatch.id, 10);
+    const guestCheckIns = checkIns.filter(c => parseInt(c.hr_guest_id, 10) === exactId);
     if (activeDate && activeDate !== 'both' && activeDate !== 'all') {
       const existing = guestCheckIns.find(c => c.check_in_date === activeDate || (c.check_in_date || '').includes(activeDate.substring(0, 6)));
       if (existing) {
@@ -154,6 +164,18 @@ async function search(rawQuery, activeDate = null) {
       alreadyCheckedIn = true;
       checkInInfo = guestCheckIns[0];
     }
+
+    const guestCheckOuts = checkOuts.filter(c => parseInt(c.hr_guest_id, 10) === exactId);
+    if (activeDate && activeDate !== 'both' && activeDate !== 'all') {
+      const existingOut = guestCheckOuts.find(c => c.check_out_date === activeDate || (c.check_out_date || '').includes(activeDate.substring(0, 6)));
+      if (existingOut) {
+        alreadyCheckedOut = true;
+        checkOutInfo = existingOut;
+      }
+    } else if (guestCheckOuts.length > 0) {
+      alreadyCheckedOut = true;
+      checkOutInfo = guestCheckOuts[0];
+    }
   }
 
   return {
@@ -161,7 +183,9 @@ async function search(rawQuery, activeDate = null) {
     exactMatch,
     possibleMatches: remainingPossibles.slice(0, 100),
     alreadyCheckedIn,
-    checkInInfo
+    checkInInfo,
+    alreadyCheckedOut,
+    checkOutInfo
   };
 }
 
@@ -170,6 +194,15 @@ async function checkIn(hrId, operator = 'Desk Operator', checkInDate = null) {
   const sbResult = await supabase.checkInGuest(hrId, operator, checkInDate);
   if (!sbResult) {
     return { success: false, message: 'Failed to record check-in in Supabase database. Please verify connection or RLS policies.' };
+  }
+  return sbResult;
+}
+
+// Perform Check-out (Direct to Supabase ONLY)
+async function checkOut(hrId, operator = 'Desk Operator', checkOutDate = null) {
+  const sbResult = await supabase.checkOutGuest(hrId, operator, checkOutDate);
+  if (!sbResult) {
+    return { success: false, message: 'Failed to record check-out in Supabase database. Please verify connection or RLS policies.' };
   }
   return sbResult;
 }
@@ -239,21 +272,29 @@ async function getHRsByCompany(companyName) {
 async function getAdminStats() {
   const guests = await readGuests();
   const checkIns = await readCheckIns();
+  const checkOuts = await readCheckOuts();
 
   const totalHRs = guests.length;
   const checkedInSet = new Set(checkIns.map(c => c.hr_guest_id));
   const checkedInCount = checkedInSet.size;
+  const checkedOutSet = new Set(checkOuts.map(c => c.hr_guest_id));
+  const checkedOutCount = checkedOutSet.size;
   const notCheckedInCount = totalHRs - checkedInCount;
 
   let count22Aug = 0, count23Aug = 0, countBothDays = 0, countDatePending = 0, countWalkIns = 0;
 
   for (const g of guests) {
-    const date = g.attendance_dates || '';
-    if (date.includes('22 Aug') && date.includes('23 Aug')) countBothDays++;
-    else if (date.toLowerCase().includes('both')) countBothDays++;
-    else if (date.includes('22 Aug')) count22Aug++;
-    else if (date.includes('23 Aug')) count23Aug++;
-    else countDatePending++;
+    const date = (g.attendance_dates || '').toString();
+    const dLower = date.toLowerCase();
+    if ((dLower.includes('22') && dLower.includes('23')) || dLower.includes('both') || dLower.includes('all')) {
+      countBothDays++;
+    } else if (dLower.includes('22')) {
+      count22Aug++;
+    } else if (dLower.includes('23')) {
+      count23Aug++;
+    } else {
+      countDatePending++;
+    }
 
     if (g.is_walk_in || g.status === 'Walk-in') countWalkIns++;
   }
@@ -261,6 +302,7 @@ async function getAdminStats() {
   return {
     totalHRs,
     checkedInCount,
+    checkedOutCount,
     notCheckedInCount,
     count22Aug,
     count23Aug,
@@ -274,6 +316,23 @@ async function getAdminStats() {
 async function getAuditLogs() {
   const checkIns = await readCheckIns();
   return checkIns.slice().reverse();
+}
+
+// Get Checkout Audit Logs (Direct from Supabase ONLY)
+async function getCheckoutAuditLogs() {
+  const checkOuts = await readCheckOuts();
+  const checkIns = await readCheckIns();
+  const checkInMap = new Map(checkIns.map(c => [c.hr_guest_id, c]));
+
+  const logs = checkOuts.slice().reverse().map(co => {
+    const ci = checkInMap.get(co.hr_guest_id);
+    return {
+      ...co,
+      check_in_date: ci ? ci.check_in_date : (co.check_out_date || 'N/A'),
+      check_in_time: ci ? ci.check_in_time : 'N/A'
+    };
+  });
+  return logs;
 }
 
 // Batch Import Records (Direct to Supabase ONLY)
@@ -304,8 +363,10 @@ module.exports = {
   initDb,
   readGuests,
   readCheckIns,
+  readCheckOuts,
   search,
   checkIn,
+  checkOut,
   addHR,
   updateHR,
   deleteHR,
@@ -313,6 +374,7 @@ module.exports = {
   getHRsByCompany,
   getAdminStats,
   getAuditLogs,
+  getCheckoutAuditLogs,
   batchImport,
   flushAll
 };
