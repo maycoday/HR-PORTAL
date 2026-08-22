@@ -971,7 +971,6 @@ async function processCheckOut(hrGuestId) {
     btnWrap.innerHTML = `<button type="button" class="btn-checkout" disabled>Recording Checkout...</button>`;
   }
 
-  const targetDateStr = activeDeskDate || getLiveDateString();
   let resData = null;
 
   try {
