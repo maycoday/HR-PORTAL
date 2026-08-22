@@ -16,12 +16,22 @@ function getLiveDateString() {
 let isBackendAvailable = true;
 let currentView = 'desk'; // 'desk' | 'admin'
 let currentDeskMode = 'checkin'; // 'checkin' | 'checkout'
+let activeDeskDate = '22 Aug 2026'; // Default Active Summit Day 2
 let currentAdminTab = 'hr'; // 'hr' | 'audit' | 'checkout-audit'
 let searchDebounceTimer = null;
 let currentCompanyFilter = null;
 let adminCachedGuests = [];
 let adminCachedCheckIns = [];
 let adminCachedCheckOuts = [];
+
+function setDeskActiveDate(dateVal) {
+  activeDeskDate = dateVal || getLiveDateString();
+  showToast(`📅 Active Summit Day set to: ${activeDeskDate}`);
+  const input = document.getElementById('search-input');
+  if (input && input.value) {
+    executeSearch(input.value);
+  }
+}
 
 function populateAdminDateFilter() {
   const checkIns = (adminCachedCheckIns && adminCachedCheckIns.length > 0) ? adminCachedCheckIns : getLocalCheckIns();
@@ -343,7 +353,7 @@ async function executeSearch(rawQuery) {
   let searchResult = null;
 
   try {
-    const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+    const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&date=${encodeURIComponent(activeDeskDate)}`);
     if (res.ok) {
       searchResult = await res.json();
       isBackendAvailable = true;
@@ -354,7 +364,7 @@ async function executeSearch(rawQuery) {
 
   // Fallback to local client engine if backend is unreachable
   if (!searchResult) {
-    searchResult = executeLocalSearch(query);
+    searchResult = executeLocalSearch(query, activeDeskDate);
   }
 
   // Merge client-side checkout cache into backend searchResult if present
@@ -372,10 +382,11 @@ async function executeSearch(rawQuery) {
 }
 
 // Client-side Local Search Engine (100% Case-Insensitive)
-function executeLocalSearch(rawQuery) {
+function executeLocalSearch(rawQuery, targetDate = null) {
   const query = rawQuery.trim();
-  const guests = getLocalGuests();
-  const checkIns = getLocalCheckIns();
+  const guests = (adminCachedGuests && adminCachedGuests.length > 0) ? adminCachedGuests : getLocalGuests();
+  const checkIns = (adminCachedCheckIns && adminCachedCheckIns.length > 0) ? adminCachedCheckIns : getLocalCheckIns();
+  const dateStr = targetDate || activeDeskDate;
   const normQuery = normalize(query);
   const words = normQuery.split(' ').filter(w => w.length > 0);
 
@@ -454,14 +465,26 @@ function executeLocalSearch(rawQuery) {
   if (exactMatch) {
     const exactId = parseInt(exactMatch.id, 10);
     const guestCheckIns = checkIns.filter(c => parseInt(c.hr_guest_id, 10) === exactId);
-    if (guestCheckIns.length > 0) {
+    if (dateStr && dateStr !== 'all') {
+      const existing = guestCheckIns.find(c => c.check_in_date === dateStr || (c.check_in_date || '').includes(dateStr.substring(0, 6)));
+      if (existing) {
+        alreadyCheckedIn = true;
+        checkInInfo = existing;
+      }
+    } else if (guestCheckIns.length > 0) {
       alreadyCheckedIn = true;
       checkInInfo = guestCheckIns[0];
     }
 
     const checkOuts = (adminCachedCheckOuts && adminCachedCheckOuts.length > 0) ? adminCachedCheckOuts : getLocalCheckOuts();
     const guestCheckOuts = checkOuts.filter(c => parseInt(c.hr_guest_id, 10) === exactId);
-    if (guestCheckOuts.length > 0) {
+    if (dateStr && dateStr !== 'all') {
+      const existingOut = guestCheckOuts.find(c => c.check_out_date === dateStr || (c.check_out_date || '').includes(dateStr.substring(0, 6)));
+      if (existingOut) {
+        alreadyCheckedOut = true;
+        checkOutInfo = existingOut;
+      }
+    } else if (guestCheckOuts.length > 0) {
       alreadyCheckedOut = true;
       checkOutInfo = guestCheckOuts[0];
     }
@@ -864,7 +887,7 @@ async function processCheckIn(hrGuestId) {
     btnWrap.innerHTML = `<button type="button" class="btn-checkin" disabled>Recording Entry...</button>`;
   }
 
-  const liveDateStr = getLiveDateString();
+  const targetDateStr = activeDeskDate || getLiveDateString();
 
   let resData = null;
 
@@ -875,7 +898,7 @@ async function processCheckIn(hrGuestId) {
       body: JSON.stringify({
         hr_guest_id: hrGuestId,
         operator: 'Registration Desk',
-        check_in_date: liveDateStr
+        check_in_date: targetDateStr
       })
     });
     if (res.ok) {
@@ -918,13 +941,14 @@ async function processCheckIn(hrGuestId) {
 // Process Single-Click Check-Out
 async function processCheckOut(hrGuestId) {
   const parsedId = parseInt(hrGuestId, 10);
+  const targetDateStr = activeDeskDate || getLiveDateString();
   const checkIns = (adminCachedCheckIns && adminCachedCheckIns.length > 0) ? adminCachedCheckIns : getLocalCheckIns();
   const checkOuts = (adminCachedCheckOuts && adminCachedCheckOuts.length > 0) ? adminCachedCheckOuts : getLocalCheckOuts();
 
-  const isCheckedIn = checkIns.some(c => parseInt(c.hr_guest_id, 10) === parsedId);
+  const isCheckedIn = checkIns.some(c => parseInt(c.hr_guest_id, 10) === parsedId && (c.check_in_date === targetDateStr || (c.check_in_date || '').includes(targetDateStr.substring(0, 6))));
 
   if (!isCheckedIn) {
-    showToast(`⚠️ Checkout is only allowed for delegates who have already checked in.`, 'warning');
+    showToast(`⚠️ Checkout is only allowed for delegates who have completed check-in for ${targetDateStr}.`, 'warning');
     const input = document.getElementById('search-input');
     if (input && input.value) {
       executeSearch(input.value);
@@ -932,9 +956,9 @@ async function processCheckOut(hrGuestId) {
     return;
   }
 
-  const existingOut = checkOuts.find(c => parseInt(c.hr_guest_id, 10) === parsedId);
+  const existingOut = checkOuts.find(c => parseInt(c.hr_guest_id, 10) === parsedId && (c.check_out_date === targetDateStr || (c.check_out_date || '').includes(targetDateStr.substring(0, 6))));
   if (existingOut) {
-    showToast(`⚠️ ${existingOut.hr_name || 'Delegate'} has already completed checkout on ${existingOut.check_out_date} at ${existingOut.check_out_time}.`, 'warning');
+    showToast(`⚠️ ${existingOut.hr_name || 'Delegate'} has already completed checkout for ${targetDateStr} on ${existingOut.check_out_date} at ${existingOut.check_out_time}.`, 'warning');
     const input = document.getElementById('search-input');
     if (input && input.value) {
       executeSearch(input.value);
@@ -947,7 +971,7 @@ async function processCheckOut(hrGuestId) {
     btnWrap.innerHTML = `<button type="button" class="btn-checkout" disabled>Recording Checkout...</button>`;
   }
 
-  const liveDateStr = getLiveDateString();
+  const targetDateStr = activeDeskDate || getLiveDateString();
   let resData = null;
 
   try {
@@ -957,7 +981,7 @@ async function processCheckOut(hrGuestId) {
       body: JSON.stringify({
         hr_guest_id: hrGuestId,
         operator: 'Registration Desk',
-        check_out_date: liveDateStr
+        check_out_date: targetDateStr
       })
     });
     if (res.ok) {

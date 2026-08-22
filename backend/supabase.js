@@ -615,7 +615,7 @@ async function checkOutGuest(hrGuestId, operator = 'Desk Operator', checkOutDate
     if (checkInRes.ok) {
       const existingCheckIns = await checkInRes.json();
       if (Array.isArray(existingCheckIns) && existingCheckIns.length > 0) {
-        hasCheckIn = true;
+        hasCheckIn = existingCheckIns.some(c => c.check_in_date === dateStr || (c.check_in_date || '').includes(dateStr.substring(0, 6)));
       }
     }
 
@@ -623,7 +623,7 @@ async function checkOutGuest(hrGuestId, operator = 'Desk Operator', checkOutDate
       return {
         success: false,
         notCheckedIn: true,
-        message: `${guest.full_name} has not checked in yet. Checkout is only allowed for delegates who have completed check-in.`
+        message: `${guest.full_name} has not checked in yet for ${dateStr}. Checkout is only allowed after completing check-in for this day.`
       };
     }
 

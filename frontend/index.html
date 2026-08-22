@@ -104,6 +104,13 @@
             </svg>
             Back to Home
           </button>
+          <div class="day-switch-wrap" title="Select Summit Day for Check-In / Check-Out">
+            <span class="day-switch-icon">📅</span>
+            <select id="desk-day-select" class="desk-day-select" onchange="setDeskActiveDate(this.value)">
+              <option value="22 Aug 2026" selected>Day 2 — Today (22 Aug 2026)</option>
+              <option value="21 Aug 2026">Day 1 — Previous (21 Aug 2026)</option>
+            </select>
+          </div>
           <div class="segmented-mode-switch" role="tablist" aria-label="Verification Desk Mode">
             <button type="button" class="mode-tab active" id="mode-btn-checkin" role="tab" aria-selected="true" onclick="setDeskMode('checkin')">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>

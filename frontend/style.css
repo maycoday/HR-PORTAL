@@ -2285,6 +2285,33 @@ body.dark-mode .brand-logo.logo-dark {
   background: var(--terracotta-dark);
 }
 
+/* Day Switcher */
+.day-switch-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface, #ffffff);
+  border: 1.5px solid var(--terracotta, #c05638);
+  border-radius: var(--radius-pill);
+  padding: 5px 14px;
+  box-shadow: 0 2px 8px rgba(34, 29, 21, 0.06);
+}
+
+.day-switch-icon {
+  font-size: 0.95rem;
+}
+
+.desk-day-select {
+  background: transparent;
+  border: none;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--ink-strong, #1f2937);
+  cursor: pointer;
+  outline: none;
+  padding-right: 4px;
+}
+
 /* Segmented Mode Switch (Check-In vs Check-Out) */
 .segmented-mode-switch {
   display: inline-flex;
