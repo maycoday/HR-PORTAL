@@ -3,6 +3,37 @@ const path = require('path');
 const supabase = require('./supabase');
 
 const INITIAL_SEED_FILE = path.join(__dirname, 'data', 'hr_guests.json');
+const CHECK_OUTS_FILE = path.join(__dirname, 'data', 'check_outs.json');
+
+function getLocalFileCheckOuts() {
+  if (fs.existsSync(CHECK_OUTS_FILE)) {
+    try {
+      const content = fs.readFileSync(CHECK_OUTS_FILE, 'utf8');
+      const data = JSON.parse(content);
+      return Array.isArray(data) ? data : [];
+    } catch (e) {
+      return [];
+    }
+  }
+  return [];
+}
+
+function saveLocalFileCheckOut(record) {
+  if (!record || !record.hr_guest_id) return;
+  const list = getLocalFileCheckOuts();
+  const existingIndex = list.findIndex(c => parseInt(c.hr_guest_id, 10) === parseInt(record.hr_guest_id, 10));
+  if (existingIndex !== -1) {
+    list[existingIndex] = record;
+  } else {
+    list.push(record);
+  }
+  try {
+    fs.writeFileSync(CHECK_OUTS_FILE, JSON.stringify(list, null, 2), 'utf8');
+  } catch (e) {
+    console.error('Error saving local check_outs.json file:', e.message);
+  }
+}
+
 
 function normalizeText(str) {
   if (!str) return '';
@@ -63,11 +94,22 @@ async function readCheckIns() {
   return sbCheckIns;
 }
 
-// Read Check-outs: Direct from Supabase ONLY
+// Read Check-outs: Merged Supabase and Server Storage
 async function readCheckOuts() {
   const sbCheckOuts = await supabase.fetchCheckOuts();
-  return Array.isArray(sbCheckOuts) ? sbCheckOuts : [];
+  const fileCheckOuts = getLocalFileCheckOuts();
+  const map = new Map();
+  for (const c of (sbCheckOuts || [])) {
+    if (c && c.hr_guest_id) map.set(parseInt(c.hr_guest_id, 10), c);
+  }
+  for (const c of fileCheckOuts) {
+    if (c && c.hr_guest_id && !map.has(parseInt(c.hr_guest_id, 10))) {
+      map.set(parseInt(c.hr_guest_id, 10), c);
+    }
+  }
+  return Array.from(map.values());
 }
+
 
 // Main Search Function (100% Case-Insensitive & Diacritic-Insensitive over Supabase Data)
 async function search(rawQuery, activeDate = null) {
@@ -198,11 +240,14 @@ async function checkIn(hrId, operator = 'Desk Operator', checkInDate = null) {
   return sbResult;
 }
 
-// Perform Check-out (Direct to Supabase ONLY)
+// Perform Check-out (Direct to Supabase with Server Storage Fallback)
 async function checkOut(hrId, operator = 'Desk Operator', checkOutDate = null) {
   const sbResult = await supabase.checkOutGuest(hrId, operator, checkOutDate);
   if (!sbResult) {
     return { success: false, message: 'Failed to record check-out in Supabase database. Please verify connection or RLS policies.' };
+  }
+  if (sbResult.success && sbResult.checkOutInfo) {
+    saveLocalFileCheckOut(sbResult.checkOutInfo);
   }
   return sbResult;
 }

@@ -211,15 +211,20 @@ function switchView(viewName) {
   document.querySelectorAll('.nav-pill').forEach(el => el.classList.remove('active'));
 
   if (viewName === 'desk') {
-    document.getElementById('view-desk').classList.add('active');
-    if (currentDeskMode === 'checkout') {
-      document.getElementById('nav-btn-checkout').classList.add('active');
-    } else {
-      document.getElementById('nav-btn-desk').classList.add('active');
+    const viewDesk = document.getElementById('view-desk');
+    if (viewDesk) viewDesk.classList.add('active');
+    const checkoutNavBtn = document.getElementById('nav-btn-checkout');
+    const deskNavBtn = document.getElementById('nav-btn-desk');
+    if (currentDeskMode === 'checkout' && checkoutNavBtn) {
+      checkoutNavBtn.classList.add('active');
+    } else if (deskNavBtn) {
+      deskNavBtn.classList.add('active');
     }
   } else {
-    document.getElementById('view-admin').classList.add('active');
-    document.getElementById('nav-btn-admin').classList.add('active');
+    const viewAdmin = document.getElementById('view-admin');
+    if (viewAdmin) viewAdmin.classList.add('active');
+    const adminNavBtn = document.getElementById('nav-btn-admin');
+    if (adminNavBtn) adminNavBtn.classList.add('active');
     refreshAdminData();
   }
 }
@@ -533,7 +538,7 @@ function renderSearchResults(result) {
               <div class="already-checked-icon">📤</div>
               <div class="already-checked-text">
                 <h4>Already Completed Checkout</h4>
-                <p><strong>${escapeHTML(exactMatch.full_name)}</strong> completed checkout at <strong>${checkOutInfo.check_out_time}</strong> on <strong>${checkOutInfo.check_out_date}</strong>. Duplicate gift collection is prevented.</p>
+                <p><strong>${escapeHTML(exactMatch.full_name)}</strong> completed checkout at <strong>${checkOutInfo.check_out_time}</strong> on <strong>${checkOutInfo.check_out_date}</strong>.</p>
               </div>
             </div>
 
@@ -1653,7 +1658,7 @@ function closeGuestInfoModal() {
 
 // --- Edit HR Modal ---
 function openEditModal(hrId) {
-  const guests = getLocalGuests();
+  const guests = (adminCachedGuests && adminCachedGuests.length > 0) ? adminCachedGuests : getLocalGuests();
   const g = guests.find(item => item.id === parseInt(hrId, 10));
   if (!g) return;
 
@@ -2214,10 +2219,11 @@ function exportCSV() {
   }
 
   // Client-side CSV generation
-  const guests = getLocalGuests();
-  const checkIns = getLocalCheckIns();
+  const guests = (adminCachedGuests && adminCachedGuests.length > 0) ? adminCachedGuests : getLocalGuests();
+  const checkIns = (adminCachedCheckIns && adminCachedCheckIns.length > 0) ? adminCachedCheckIns : getLocalCheckIns();
+  const checkOuts = (adminCachedCheckOuts && adminCachedCheckOuts.length > 0) ? adminCachedCheckOuts : getLocalCheckOuts();
 
-  const headers = ['ID', 'Full Name', 'Designation', 'Company', 'Email', 'Mobile', 'Role', 'Check-In Status', 'Check-In Date', 'Check-In Time', 'Invited By', 'Remarks'];
+  const headers = ['ID', 'Full Name', 'Designation', 'Company', 'Email', 'Mobile', 'Role', 'Check-In Status', 'Check-In Date', 'Check-In Time', 'Checkout Status', 'Checkout Date', 'Checkout Time', 'Invited By', 'Remarks'];
 
   const normTarget = dateFilter.toLowerCase();
   const isFilteredByDate = dateFilter && normTarget !== 'all' && normTarget !== 'all dates';
@@ -2248,6 +2254,8 @@ function exportCSV() {
     if (statusFilter === 'checkedin' && !c) return null;
     if (statusFilter === 'notcheckedin' && c) return null;
 
+    const co = checkOuts.find(o => parseInt(o.hr_guest_id, 10) === parseInt(g.id, 10));
+
     return [
       g.id,
       `"${(g.full_name || '').replace(/"/g, '""')}"`,
@@ -2259,6 +2267,9 @@ function exportCSV() {
       c ? 'CHECKED IN' : 'NOT CHECKED IN',
       c ? c.check_in_date : '',
       c ? c.check_in_time : '',
+      co ? 'CHECKED OUT' : 'NOT CHECKED OUT',
+      co ? co.check_out_date : '',
+      co ? co.check_out_time : '',
       `"${(g.invited_by || '').replace(/"/g, '""')}"`,
       `"${(g.remarks || '').replace(/"/g, '""')}"`
     ].join(',');

@@ -247,8 +247,9 @@ app.get('/api/admin/export', async (req, res) => {
 
     const guests = (await db.readGuests()) || [];
     const checkIns = (await db.readCheckIns()) || [];
+    const checkOuts = (await db.readCheckOuts()) || [];
 
-    const headers = ['ID', 'Full Name', 'Designation', 'Company', 'Email', 'Mobile', 'Role', 'Check-In Status', 'Check-In Date', 'Check-In Time', 'Invited By', 'Remarks'];
+    const headers = ['ID', 'Full Name', 'Designation', 'Company', 'Email', 'Mobile', 'Role', 'Check-In Status', 'Check-In Date', 'Check-In Time', 'Checkout Status', 'Checkout Date', 'Checkout Time', 'Invited By', 'Remarks'];
 
     const normTarget = targetDate.toLowerCase();
     const isFilteredByDate = targetDate && normTarget !== 'all' && normTarget !== 'all dates';
@@ -280,6 +281,8 @@ app.get('/api/admin/export', async (req, res) => {
       if (statusFilter === 'checkedin' && !c) return null;
       if (statusFilter === 'notcheckedin' && c) return null;
 
+      const co = checkOuts.find(coItem => parseInt(coItem.hr_guest_id, 10) === parseInt(g.id, 10));
+
       return [
         g.id,
         `"${(g.full_name || '').replace(/"/g, '""')}"`,
@@ -291,6 +294,9 @@ app.get('/api/admin/export', async (req, res) => {
         c ? 'CHECKED IN' : 'NOT CHECKED IN',
         c ? c.check_in_date : '',
         c ? c.check_in_time : '',
+        co ? 'CHECKED OUT' : 'NOT CHECKED OUT',
+        co ? co.check_out_date : '',
+        co ? co.check_out_time : '',
         `"${(g.invited_by || '').replace(/"/g, '""')}"`,
         `"${(g.remarks || '').replace(/"/g, '""')}"`
       ].join(',');
