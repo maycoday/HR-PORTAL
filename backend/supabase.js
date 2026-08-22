@@ -347,8 +347,8 @@ async function checkInGuest(hrGuestId, operator = 'Desk Operator', checkInDate =
   if (!url || !key) return null;
   try {
     const now = new Date();
-    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-    const dateStr = checkInDate || now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
+    const dateStr = checkInDate || now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
 
     // Check if already checked in for this date
     const checkRes = await fetch(`${url}/rest/v1/check_ins?hr_guest_id=eq.${hrGuestId}`, {
@@ -591,8 +591,8 @@ async function checkOutGuest(hrGuestId, operator = 'Desk Operator', checkOutDate
   if (!url || !key) return null;
   try {
     const now = new Date();
-    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-    const dateStr = checkOutDate || now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
+    const dateStr = checkOutDate || now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
 
     // 1. Fetch guest details first
     const guestRes = await fetch(`${url}/rest/v1/hr_guests?id=eq.${hrGuestId}`, {

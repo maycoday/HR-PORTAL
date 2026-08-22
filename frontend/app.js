@@ -10,7 +10,11 @@ const STORAGE_KEY_CHECKOUTS = 'hr_summit_checkouts_v1';
 const STORAGE_KEY_THEME = 'hr_summit_theme';
 
 function getLiveDateString() {
-  return new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  return new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
+}
+
+function getLiveTimeString() {
+  return new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
 }
 
 let isBackendAvailable = true;
@@ -1048,7 +1052,7 @@ function processLocalCheckOut(hrGuestId, targetDate = null) {
   }
 
   const now = new Date();
-  const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
 
   const record = {
     id: Date.now(),
@@ -1091,7 +1095,7 @@ function processLocalCheckIn(hrGuestId, targetDate = null) {
   }
 
   const now = new Date();
-  const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
 
   const record = {
     id: Date.now(),
@@ -1489,7 +1493,7 @@ async function renderAuditLogsTable() {
 
   tbody.innerHTML = logs.map(l => `
     <tr>
-      <td>${new Date(l.timestamp || Date.now()).toLocaleString()}</td>
+      <td>${new Date(l.timestamp || Date.now()).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</td>
       <td><strong>${escapeHTML(l.hr_name)}</strong></td>
       <td>🏢 ${escapeHTML(l.company_name)}</td>
       <td>${escapeHTML(l.designation || 'HR Professional')}</td>
